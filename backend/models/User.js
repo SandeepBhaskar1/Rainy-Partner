@@ -1,0 +1,124 @@
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  phone: {
+    type: String,
+    required: true,
+    unique: true,
+    match: [/^[6-9]\d{9}$/, 'Please provide a valid Indian phone number']
+  },
+  name: {
+    type: String,
+    trim: true
+  },
+  email: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address']
+  },
+  role: {
+    type: String,
+    enum: ['PLUMBER', 'ADMIN'],
+    required: true,
+    default: 'PLUMBER'
+  },
+  password_hash: {
+    type: String
+  },
+  needs_onboarding: {
+    type: Boolean,
+    default: true
+  },
+  agreement_status: {
+    type: Boolean,
+    default: false
+  },
+  kyc_status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  address: {
+    address: { type: String },
+    city: { type: String },
+    district: { type: String },
+    state: { type: String },
+    pin: { type: String }
+  },
+  service_area_pin : [{type: String}],
+  experience: { type: Number },
+  tools: { type: String },
+  profile: { type: String },
+  aadhaar_front: { type: String },
+  aadhaar_back: { type: String },
+  aadhaar_number: { type: String },
+  plumber_license_number: { type: String },
+  license_front: { type: String },
+  license_back: { type: String },
+  trust: {
+    type: Number,
+    default: 100
+  },
+  created_at: {
+    type: Date,
+    default: Date.now()
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now()
+  },
+  last_login: Date,
+  is_active: {
+    type: Boolean,
+    default: true
+  }
+});
+
+userSchema.pre('save', function(next) {
+  if (!this.isNew) {
+    this.updated_at = new Date();
+  }
+  next();
+});
+
+// Instance method to check if user needs onboarding
+userSchema.methods.needsOnboarding = function() {
+  return this.needs_onboarding || this.kyc_status === 'pending';
+};
+
+// Instance method to get user profile
+userSchema.methods.getProfile = function() {
+  return {
+    id: this._id,
+    name: this.name,
+    phone: this.phone,
+    email: this.email,
+    role: this.role,
+    kyc_status: this.kyc_status,
+    address: this.address,
+    experience: this.experience,
+    tools: this.tools,
+    photo_url: this.photo_url,
+    trust: this.trust,
+    needs_onboarding: this.needs_onboarding,
+    created_at: this.created_at
+  };
+};
+
+// Static method to find by phone
+userSchema.statics.findByPhone = function(phone) {
+  return this.findOne({ phone });
+};
+
+// Static method to find plumbers only
+userSchema.statics.findPlumbers = function(filter = {}) {
+  return this.find({ ...filter, role: 'PLUMBER' });
+};
+
+// Static method to find admins only
+userSchema.statics.findAdmins = function(filter = {}) {
+  return this.find({ ...filter, role: 'ADMIN' });
+};
+
+module.exports = mongoose.model('User', userSchema);
