@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Rainy Partner App",
+    "slug": "Rainy-Partner-App",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/Rainy-Filter-Logo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/Rainy-Filter-Logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/Rainy-Filter-Logo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/Rainy-Filter-Logo.png"
+    }
+  }
+}
