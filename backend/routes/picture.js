@@ -16,9 +16,8 @@ router.post('/uploadurl', verifyToken, async (req, res) => {
         if (!phone){
             return res.status(400).json({message: 'Phone number not found'})
         }
-        const fileName = `${phone}/${Date.now()}-${docType}.${fileType}`;
 
-        if (!docType || !fileName) {
+        if (!docType || !fileType) {
             return res.status(400).json({message: 'docType and fileType required.'})
         }
 
@@ -26,6 +25,8 @@ router.post('/uploadurl', verifyToken, async (req, res) => {
         if (!allowedFileTypes.includes(fileType.toLowerCase())){
             return res.status(400).json({message: 'File Type not allowed.'})
         }
+
+        const fileName = `${phone}/${Date.now()}-${docType}.${fileType}`;
 
         const s3 = new S3Client({
             region: process.env.AWS_REGION,
@@ -35,7 +36,8 @@ router.post('/uploadurl', verifyToken, async (req, res) => {
             },
         });
 
-        const putObject = async (fileName, fileType, docType) => {
+
+        const putObject = async (fileName, fileType) => {
             const command = new PutObjectCommand({
                 Bucket: process.env.S3_BUCKET_DOCUMENTS,
                 Key: fileName, 
@@ -45,7 +47,9 @@ router.post('/uploadurl', verifyToken, async (req, res) => {
             return url;
         };
 
-        const signedUrl = await putObject(fileName, fileType, docType);
+        
+
+        const signedUrl = await putObject(fileName, fileType);
 
         // Send the signed URL as response
         res.json({
@@ -61,10 +65,15 @@ router.post('/uploadurl', verifyToken, async (req, res) => {
 
 router.post('/get-image', verifyToken, async (req, res) => {
   try {
-    const { key } = req.body; // example: "9876543210/profile-picture.png"
+    const { key } = req.body; 
+    const phone = req.user?.phone;
 
     if (!key) {
-      return res.status(400).json({ message: "File key is required" });
+  return res.status(400).json({ message: "File key is required" });
+}
+
+    if (!key.startsWith(`${phone}/`)) {
+      return res.status(403).json({ message: "Access Denied." });
     }
 
     const s3 = new S3Client({

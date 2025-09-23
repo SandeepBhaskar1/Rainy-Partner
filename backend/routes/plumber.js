@@ -35,7 +35,7 @@ router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
   };
 
   res.json(profile);
-  console.log(service_area_pin);
+  console.log(user.service_area_pin);
   
 }));
 
