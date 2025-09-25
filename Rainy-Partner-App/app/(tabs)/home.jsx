@@ -15,38 +15,26 @@ import { useAuth } from "../../src/Context/AuthContext";
 import axios from "axios";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Keychain from 'react-native-keychain' 
 
 export default function HomeScreen() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [profile, setProfile] = useState(null);
   const [assignedJobs, setAssignedJobs] = useState([]);
   const [activeOrders, setActiveOrders] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [token, setToken] = useState("");
   const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
 
-  useEffect(() => {
-    const loadToken = async () => {
-      const accessToken = await AsyncStorage.getItem("access_token");
-      if (!accessToken) {
-        setToken(null);
-        return;
-      }
-      setToken(accessToken);
-    };
-    loadToken();
-  }, []);
-
-  const fetchProfile = async (accessToken) => {
+  const fetchProfile = async (token) => {
     const userRawData = await AsyncStorage.getItem("user_data");
     const userData = JSON.parse(userRawData);
 
     try {
       setLoading(true);
       const res = await axios.get(`${BACKEND_URL}/profile/${userData.id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       setProfile(res.data);
     } catch (error) {
@@ -59,12 +47,12 @@ export default function HomeScreen() {
   };
 
   // Fetch assigned jobs
-  const fetchAssignedJobs = async (accessToken) => {
+  const fetchAssignedJobs = async (token) => {
     try {
       const res = await axios.get(
         `${process.env.BACKEND_URL_LOCAL}/plumber/assigned-jobs`,
         {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
       console.log(res.data.jobs);
@@ -77,12 +65,12 @@ export default function HomeScreen() {
   };
 
   // Fetch active orders
-  const fetchActiveOrders = async (accessToken) => {
+  const fetchActiveOrders = async (token) => {
     try {
       const res = await axios.get(
         `${process.env.BACKEND_URL_LOCAL}/plumber/orders`,
         {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
       const filtered =
@@ -101,15 +89,14 @@ export default function HomeScreen() {
 
   // Fetch everything together
   const fetchAll = useCallback(async () => {
-    const accessToken = await AsyncStorage.getItem("access_token");
-    if (!accessToken) {
+    if (!token) {
       return;
     }
     try {
          await Promise.all([
-      fetchProfile(accessToken),
-      fetchAssignedJobs(accessToken),
-      fetchActiveOrders(accessToken)
+      fetchProfile(token),
+      fetchAssignedJobs(token),
+      fetchActiveOrders(token)
     ]) 
   }catch (err) {
       console.error('Error in fetchAll', err)
@@ -141,18 +128,8 @@ export default function HomeScreen() {
     );
   }
 
-  const handleLogout = async () => {
-    try {
-      await AsyncStorage.removeItem("access_token");
-      await AsyncStorage.removeItem("user_data");
-      router.replace("/login");
-    } catch (err) {
-      console.error("Error occurred while logging out:", err);
-    }
-  };
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={fetchAll} />
@@ -316,7 +293,7 @@ export default function HomeScreen() {
             onPress={() =>
               Alert.alert("Confirm Logout", "Are you sure?", [
                 { text: "Cancel", style: "cancel" },
-                { text: "Logout", onPress: handleLogout },
+                { text: "Logout", onPress: logout },
               ])
             }
           >

@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
     const [imageUrl, setImageUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
@@ -25,10 +25,9 @@ export default function ProfileScreen() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ['plumber-profile'],
     queryFn: async () => {
-        const token = await AsyncStorage.getItem('access_token')
         const response = await axios.get(`${process.env.BACKEND_URL_LOCAL}/plumber/profile`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${user?.access_token}`,
         },
       });
       return response.data;
@@ -42,11 +41,10 @@ useEffect(() => {
 
   const getProfileImage = async () => {
     try {
-      const token = await AsyncStorage.getItem('access_token');
       const response = await axios.post(
         `${BACKEND_URL}/get-image`,
         { key: profile.profile }, 
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${user?.access_token}` } }
       );
       setImageUrl(response.data.url);
     } catch (error) {

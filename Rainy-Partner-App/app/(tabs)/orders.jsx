@@ -22,8 +22,7 @@ import { useRoute } from '@react-navigation/native';
 import KYCProtected from '../../src/Context/KYC-Page';
 export default function OrdersScreen() {
 
-const auth = useAuth();
-const user = auth?.user;
+const {user, token} = useAuth();
 
 const route = useRoute();
 const params = route.params || {};
@@ -88,7 +87,6 @@ const [activeTab, setActiveTab] = useState(
 
   // Fetch orders function
   const fetchOrders = async () => {
-    const token = await AsyncStorage.getItem('access_token');
     if (activeTab !== 'track' || !user?.access_token) return;
     
     setOrdersLoading(true);
@@ -189,7 +187,6 @@ const [activeTab, setActiveTab] = useState(
 
 const submitOrder = async () => {
   if (!validateOrder()) return;
-  const token = await AsyncStorage.getItem("access_token");
 
   setIsLoading(true);
 
@@ -224,7 +221,7 @@ const submitOrder = async () => {
         headers: { 'Authorization': `Bearer ${token}` },
       }
     );
-    const result = await response.json();
+    const result = await response.data;
     console.log(result);
     
 
@@ -281,13 +278,11 @@ const submitOrder = async () => {
 
   return (
     <KYCProtected>
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Orders</Text>
-        </View>
+      <View style={styles.container} >
+        <SafeAreaView style={styles.header}>
+          <Text style={styles.title}>Order Now</Text>
+        </SafeAreaView>
 
-        {/* Tab Navigation */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'place' && styles.activeTab]}
@@ -406,15 +401,15 @@ const submitOrder = async () => {
                   ))
                 )}
               </View>
-            </ScrollView>
 
-            {/* Customer Information Section */}
+              {/* Customer Information Section */}
             {Object.values(cart).some(quantity => quantity > 0) && (
               <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={80}
                 style={styles.customerSection}
               >
-                <ScrollView style={styles.customerForm} showsVerticalScrollIndicator={false}>
+                <View style={styles.customerForm} showsVerticalScrollIndicator={false}>
                   {/* Customer Information */}
                   <View style={styles.formSection}>
                     <Text style={styles.formSectionTitle}>Customer Information</Text>
@@ -617,11 +612,12 @@ const submitOrder = async () => {
                       </>
                     )}
                   </View>
-                </ScrollView>
+                </View>
               </KeyboardAvoidingView>
             )}
 
-            {/* Place Order Button */}
+
+                        {/* Place Order Button */}
             {Object.values(cart).some(quantity => quantity > 0) && (
               <View style={styles.orderButtonContainer}>
                 <TouchableOpacity
@@ -642,6 +638,7 @@ const submitOrder = async () => {
                 </TouchableOpacity>
               </View>
             )}
+            </ScrollView>
           </View>
         ) : (
           /* Track Orders Content */
@@ -702,9 +699,9 @@ const submitOrder = async () => {
             )}
           </ScrollView>
         )}
-      </SafeAreaView>
+      </View>
       </KYCProtected>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -715,7 +712,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'white',
     paddingHorizontal: 20,
-    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
@@ -788,7 +784,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productsGrid: {
-    paddingBottom: 100,
+    paddingBottom: 10,
   },
 
   // Zepto-Style Product Cards
@@ -905,12 +901,12 @@ const styles = StyleSheet.create({
   // Cart Summary (Zepto Style)
   cartSummary: {
     position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
+    // bottom: 20,
+    // left: 16,
+    // right: 16,
     backgroundColor: '#00B761',
     borderRadius: 12,
-    padding: 16,
+    // padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1058,103 +1054,110 @@ const styles = StyleSheet.create({
   },
 
   // Customer Information Form Styles
-  customerSection: {
-    flex: 1,
-    backgroundColor: '#F8F8F8',
-  },
-  customerForm: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  formSection: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  formSectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  formInput: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  halfInputGroup: {
-    flex: 0.48,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  orderButtonContainer: {
-    backgroundColor: 'white',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-  },
-  placeOrderBtn: {
-    backgroundColor: '#00B761',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#00B761',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  placeOrderBtnDisabled: {
-    backgroundColor: '#999',
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  placeOrderBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: 'white',
-    marginRight: 8,
-  },
+customerSection: {
+  width: '100%',
+  paddingVertical: 20,
+  backgroundColor: '#FFFFFF', // full white background
+  borderRadius: 16
+},
+
+formSection: {
+  marginBottom: 24,
+  paddingHorizontal: 16,       // consistent left-right spacing
+},
+
+formSectionTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: '#1A1A1A',
+  marginBottom: 20,
+  textAlign: 'left',
+},
+
+inputGroup: {
+  marginBottom: 20,             // equal spacing for all fields
+},
+
+inputLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#444',
+  marginBottom: 8,              // spacing between label and input
+},
+
+formInput: {
+  borderRadius: 8,
+  paddingHorizontal: 14,
+  paddingVertical: 14,
+  fontSize: 15,
+  color: '#222',
+  borderWidth: 1,
+  borderColor: '#E0E0E0',
+  backgroundColor: '#FAFAFA',   // slight contrast for inputs
+},
+
+multilineInput: {
+  height: 100,
+  textAlignVertical: 'top',
+},
+
+inputRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 16,                      // consistent gap
+},
+
+halfInputGroup: {
+  flex: 1,
+},
+
+toggleContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 20,
+},
+
+toggleLabel: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#333',
+},
+
+orderButtonContainer: {
+  width: '100%',
+  paddingHorizontal: 
+  16,
+  marginTop: 16,
+},
+
+placeOrderBtn: {
+  backgroundColor: '#00B761',
+  borderRadius: 12,
+  paddingVertical: 16,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  elevation: 4,
+  shadowColor: '#00B761',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.5,
+  shadowRadius: 4,
+  marginBottom: 16,
+  
+},
+
+placeOrderBtnDisabled: {
+  backgroundColor: '#B5B5B5',
+  elevation: 0,
+  shadowOpacity: 0,
+},
+
+placeOrderBtnText: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#FFFFFF',
+  marginRight: 8,
+},
+
 });

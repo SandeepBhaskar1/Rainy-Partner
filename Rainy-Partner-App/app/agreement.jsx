@@ -11,10 +11,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useAuth } from '../src/Context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
+
 export default function AgreementScreen({navigation}) {
+  const { token } = useAuth();
   const [accepted, setAccepted] = useState(false);
 const handleAccept = async () => {
   if (!accepted) {
@@ -23,7 +26,6 @@ const handleAccept = async () => {
   }
 
   try {
-    const token = await AsyncStorage.getItem('access_token');
     const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
 
     await axios.put(

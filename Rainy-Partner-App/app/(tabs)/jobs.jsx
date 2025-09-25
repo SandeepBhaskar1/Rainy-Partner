@@ -15,14 +15,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import axios from 'axios';
 import { useAuth } from '../../src/Context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from 'expo-router';
 import KYCProtected from '../../src/Context/KYC-Page';
-// import {HeaderBackButton} from 'react-navigation/elements'
 
 export default function JobsScreen() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState('pending');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -34,46 +35,103 @@ export default function JobsScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const navigation = useNavigation();
   
-  // Replace React Query state with regular useState
   const [pendingJobs, setPendingJobs] = useState([]);
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   
   const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const MAX_FILE_SIZE = 2 * 1024 * 1024;
+  const [signedUrls, setSignedUrls] = useState({
+    serialNumber: null,
+    warrantyCard: null,
+    installation: null,
+  });
 
-useEffect(() => {
-  const backAction = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-      return true; // handled
+  useEffect(() => {
+    const backAction = () => {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
+  const extractS3Key = (url) => {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.pathname.substring(1);
+    } catch (error) {
+      console.error('Error extracting S3 Key:', error);
+      return url;
     }
-    // let system handle the back (exit app) if no screen to go back
-    return false;
   };
 
-  const backHandler = BackHandler.addEventListener(
-    'hardwareBackPress',
-    backAction
-  );
+  const getSignedUrlFromKey = async (s3Key, authToken) => {
+    try {
+      const response = await axios.post(
+        `${BACKEND_URL}/get-image`,
+        { key: s3Key },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
 
-  return () => backHandler.remove();
-}, [navigation]);
+      if (response.data.success) {
+        return response.data.url;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      console.error('Error getting signed URL:', error);
+      return null;
+    }
+  };
 
+  const loadSignedUrl = async (s3Key, docType) => {
+    if (!s3Key) return;
+    
+    try {
+      const signedUrl = await getSignedUrlFromKey(s3Key, token);
+      
+      if (signedUrl) {
+        setSignedUrls(prev => ({
+          ...prev,
+          [docType]: signedUrl
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading signed URL:', error);
+    }
+  };
 
-  // Fetch pending jobs
+  useEffect(() => {
+    Object.keys(completionImages).forEach(key => {
+      if (completionImages[key] && typeof completionImages[key] === 'string') {
+        loadSignedUrl(completionImages[key], key);
+      }
+    });
+  }, [completionImages]);
+
+  // FIXED: Removed misplaced console.log and cleaned up dependencies
   const fetchPendingJobs = useCallback(async () => {
     if (activeTab !== 'pending') return;
     
     setLoadingPending(true);
     try {
-      const token = await AsyncStorage.getItem('access_token');
       const response = await fetch(`${BACKEND_URL}/plumber/assigned-jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
       const { jobs } = await response.json();
+      console.log("Fetched Pending Jobs Response:", jobs);
       
       setPendingJobs(jobs || []);
     } catch (error) {
@@ -82,15 +140,13 @@ useEffect(() => {
     } finally {
       setLoadingPending(false);
     }
-  }, [BACKEND_URL, activeTab]);
+  }, [BACKEND_URL, activeTab, user?.access_token]);
 
-  // Fetch completed jobs
   const fetchCompletedJobs = useCallback(async () => {
     if (activeTab !== 'completed') return;
     
     setLoadingCompleted(true);
     try {
-      const token = await AsyncStorage.getItem('access_token');
       const response = await fetch(`${BACKEND_URL}/plumber/completed-jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -111,16 +167,16 @@ useEffect(() => {
       }
       
       const data = await response.json();
-      setCompletedJobs(data);
+      console.log("Fetched Completed Jobs Response:", data);
+      setCompletedJobs(data.jobs || []);
     } catch (error) {
       console.error('Error fetching completed jobs:', error);
       setCompletedJobs([]);
     } finally {
       setLoadingCompleted(false);
     }
-  }, [user?.access_token, activeTab]);
+  }, [token, activeTab]);
 
-  // Load data when tab changes
   useEffect(() => {
     if (activeTab === 'pending') {
       fetchPendingJobs();
@@ -145,9 +201,23 @@ useEffect(() => {
     }
   };
 
+  // FIXED: Enhanced openCompletionModal with better logging
   const openCompletionModal = (jobId) => {
+    console.log("Opening completion modal for Job ID:", jobId);
+    
+    if (!jobId) {
+      console.error("ERROR: Job ID is null or undefined!");
+      Alert.alert('Error', 'Invalid job ID. Please try again.');
+      return;
+    }
+    
     setSelectedJobId(jobId);
     setCompletionImages({
+      serialNumber: null,
+      warrantyCard: null,
+      installation: null,
+    });
+    setSignedUrls({
       serialNumber: null,
       warrantyCard: null,
       installation: null,
@@ -156,116 +226,249 @@ useEffect(() => {
   };
 
   const pickImage = async (type) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+    Alert.alert("Upload Image", "Choose an option", [
+      {
+        text: "Take Photo",
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+            return;
+          }
 
-      if (!result.canceled && result.assets[0]) {
-        setCompletionImages(prev => ({
-          ...prev,
-          [type]: result.assets[0]
-        }));
+          const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          });
+
+          if (!result.canceled) {
+            const file = await validateAndSetImage(result.assets[0], type);
+            if (file) {
+              await handleUpload(type, file);
+            }
+          }
+        }
+      },
+      {
+        text: "Choose from Gallery",
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Media library permission is required to select photos.');
+            return;
+          }
+
+          const result = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          });
+
+          if (!result.canceled) {
+            console.log('Image Picked:', result.assets[0], type);
+            const file = await validateAndSetImage(result.assets[0], type);
+            if (file) {
+              await handleUpload(type, file);
+            }
+          }
+        }
+      },
+      { text: "Cancel", style: "cancel" }
+    ]);
+  };
+
+  const validateAndSetImage = async (file, docType) => {
+    const fileUri = file.uri;
+    const ext = file.mimeType.split('/')[1];
+
+    const allowedFileTypes = ['jpg', 'jpeg', 'png'];
+
+    if (!allowedFileTypes.includes(ext)) {
+      Alert.alert('Invalid File Type', 'Please select a valid file type (jpg, jpeg, png).');
+      return null;
+    }
+
+    const info = await FileSystem.getInfoAsync(file.uri);
+    if (info.size > MAX_FILE_SIZE) {
+      Alert.alert('File Too Large', 'File size exceeds 2MB. Please select a smaller file.');
+      return null;
+    }
+
+    const validatedFile = {
+      uri: fileUri,
+      type: `image/${ext}`,
+      ext,
+      docType
+    };
+
+    // Set local image for immediate preview
+    setCompletionImages(prev => ({
+      ...prev,
+      [docType]: validatedFile
+    }));
+    
+    return validatedFile;
+  };
+
+  // ENHANCED: Better error handling and logging
+  const handleUpload = async (docType, file) => {
+    if (!file) {
+      Alert.alert('No File', `No file selected. Please upload ${docType} first.`);
+      return;
+    }
+
+    console.log('Starting upload for:', docType, file);
+
+    try {
+      const uploadUrlResponse = await axios.post(
+        `${BACKEND_URL}/uploadurl`,
+        {
+          docType: file.docType,
+          fileType: file.ext,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      console.log('Got signed URL response:', uploadUrlResponse.data);
+      const signedUrl = uploadUrlResponse.data.url;
+
+      if (!signedUrl) {
+        console.error('No signed URL received');
+        Alert.alert("Error", "Could not get signed URL from server");
+        return;
+      }
+
+      const uploadedUrl = await uploadToS3(file.uri, signedUrl, file.type);
+
+      if (uploadedUrl) {
+        console.log('File Uploaded Successfully:', uploadedUrl);
+        const s3Key = extractS3Key(uploadedUrl);
+        console.log('Extracted S3 Key:', s3Key);
+        
+        setCompletionImages(prev => {
+          const updated = {
+            ...prev,
+            [docType]: s3Key
+          };
+          console.log('Updated completionImages:', updated);
+          return updated;
+        });
+        
+        await loadSignedUrl(s3Key, docType);
+        Alert.alert('Success', 'Image uploaded successfully!');
+      } else {
+        console.error('Upload to S3 failed');
+        Alert.alert("Error", "Failed to upload image to S3");
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
+      console.error("Error in handleUpload:", error);
+      Alert.alert("Error", "Could not upload image: " + error.message);
     }
   };
 
-  const takePhoto = async (type) => {
+  const uploadToS3 = async (fileUri, signedUrl, fileType) => {
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+      console.log('Uploading to S3:', { fileUri, signedUrl: signedUrl.substring(0, 100) + '...', fileType });
+      
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      console.log('Created blob, size:', blob.size);
+
+      const s3Response = await fetch(signedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": fileType
+        },
+        body: blob,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setCompletionImages(prev => ({
-          ...prev,
-          [type]: result.assets[0]
-        }));
+      console.log('S3 Upload response status:', s3Response.status);
+      
+      if (!s3Response.ok) {
+        throw new Error(`S3 upload failed with status: ${s3Response.status}`);
       }
+      
+      const cleanUrl = signedUrl.split('?')[0];
+      console.log('S3 Upload successful, clean URL:', cleanUrl);
+      return cleanUrl;
+      
     } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
+      console.error("Error uploading file to S3:", error);
+      Alert.alert("Upload Failed", error.message);
+      return null;
     }
   };
 
-  const showImagePickerOptions = (type) => {
-    Alert.alert(
-      'Select Image',
-      'Choose how you want to add the image',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Camera', onPress: () => takePhoto(type) },
-        { text: 'Gallery', onPress: () => pickImage(type) }
-      ]
-    );
-  };
-
+  // ENHANCED: Better validation and error handling
   const submitJobCompletion = async () => {
-    // Check if all required images are uploaded
+    console.log("Selected Job ID:", selectedJobId);
+    console.log("Current completion images:", completionImages);
+    
+    if (!selectedJobId) {
+      console.error("No job ID selected!");
+      Alert.alert('Error', 'No job selected. Please try again.');
+      return;
+    }
+    
     if (!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation) {
+      console.error("Missing images:", completionImages);
       Alert.alert('Missing Images', 'Please upload all required images before submitting.');
+      return;
+    }
+
+    // Check if images are still file objects (not uploaded yet)
+    if (typeof completionImages.serialNumber === 'object' || 
+        typeof completionImages.warrantyCard === 'object' || 
+        typeof completionImages.installation === 'object') {
+      Alert.alert('Upload in Progress', 'Please wait for all images to finish uploading.');
       return;
     }
 
     setIsUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('job_id', selectedJobId);
-      
-      // Add images to form data
-      if (completionImages.serialNumber) {
-        formData.append('serial_number_image', {
-          uri: completionImages.serialNumber.uri,
-          type: 'image/jpeg',
-          name: 'serial_number.jpg',
-        });
-      }
-      
-      if (completionImages.warrantyCard) {
-        formData.append('warranty_card_image', {
-          uri: completionImages.warrantyCard.uri,
-          type: 'image/jpeg',
-          name: 'warranty_card.jpg',
-        });
-      }
-      
-      if (completionImages.installation) {
-        formData.append('installation_image', {
-          uri: completionImages.installation.uri,
-          type: 'image/jpeg',
-          name: 'installation.jpg',
-        });
-      }
+      const payload = {
+        job_id: selectedJobId,
+        serial_number_image_key: completionImages.serialNumber,
+        warranty_card_image_key: completionImages.warrantyCard,
+        installation_image_key: completionImages.installation,
+      };
 
-      const response = await fetch(`${BACKEND_URL}/plumber/jobs/submit-completion`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user?.access_token}`,
-        },
-        body: formData,
-      });
+      console.log("Submitting payload:", payload);
 
-      if (response.ok) {
-        Alert.alert(
-          'Success', 
-          'Job completion submitted successfully! Images have been sent to admin for review.',
-          [{ text: 'OK', onPress: () => {
-            setShowCompletionModal(false);
-            fetchPendingJobs(); // Refresh pending jobs
-          }}]
-        );
+      const response = await axios.post(
+        `${BACKEND_URL}/plumber/jobs/submit-completion`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      console.log("Submission successful:", response.data);
+
+      // CORRECTION: Check for success in response data, not just status code
+      if (response.status === 200 && response.data.success) {
+        Alert.alert('Success', 'Job completion submitted successfully!', [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              setShowCompletionModal(false);
+              setSelectedJobId('');
+              setCompletionImages({
+                serialNumber: null,
+                warrantyCard: null,
+                installation: null,
+              });
+              fetchPendingJobs();
+            }
+          },
+        ]);
       } else {
         Alert.alert('Error', 'Failed to submit job completion');
       }
     } catch (error) {
-      Alert.alert('Error', 'Network error occurred');
+      console.error('Submission error:', error);
+      console.error('Error response:', error.response?.data);
+      Alert.alert('Error', `Submission failed: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -290,129 +493,132 @@ useEffect(() => {
     }
   };
 
+  // FIXED: Moved console.log outside JSX and enhanced button click logging
+  const JobCard = ({ job, isCompleted = false }) => {
+    console.log("Job Object:", job);
+    
+    return (
+      <View style={styles.jobCard}>
+        <View style={styles.jobHeader}>
+          <View style={styles.jobMainInfo}>
+            <Text style={styles.jobTitle}>
+              Installation Task #{job.id?.slice(-6)?.toUpperCase()}
+            </Text>
+            <Text style={styles.jobDate}>
+              {formatDate(job.created_at || job.assigned_date)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: getStatusColor(job.status || "pending") },
+            ]}
+          >
+            <Text style={styles.statusText}>
+              {job.status === "under_review"
+                ? "Under Review"
+                : isCompleted
+                ? "Completed"
+                : job.status || "Pending"}
+            </Text>
+          </View>
+        </View>
 
-  const JobCard = ({ job, isCompleted = false }) => (
-    <View style={styles.jobCard}>
-      <View style={styles.jobHeader}>
-        <View style={styles.jobMainInfo}>
-          <Text style={styles.jobTitle}>
-            Installation Task #{job.id?.slice(-6)?.toUpperCase()}
+        <View style={styles.clientSection}>
+          <View style={styles.clientHeader}>
+            <Ionicons name="person-outline" size={16} color="#4A90E2" />
+            <Text style={styles.clientHeaderText}>Client Details</Text>
+          </View>
+          <Text style={styles.clientName}>
+            {job.client?.name || job.customer_name || "N/A"}
           </Text>
-          <Text style={styles.jobDate}>
-            {formatDate(job.created_at || job.assigned_date)}
+          <Text style={styles.clientPhone}>
+            {job.client?.phone || job.customer_phone || "Contact not provided"}
           </Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(job.status || "pending") },
-          ]}
-        >
-          <Text style={styles.statusText}>
-            {job.status === "under_review"
-              ? "Under Review"
-              : isCompleted
-              ? "Completed"
-              : job.status || "Pending"}
+          <Text style={styles.clientAddress} numberOfLines={2}>
+            {job.client?.address || job.installation_address || "Address not provided"}
           </Text>
         </View>
-      </View>
 
-      {/* Client Details */}
-      <View style={styles.clientSection}>
-        <View style={styles.clientHeader}>
-          <Ionicons name="person-outline" size={16} color="#4A90E2" />
-          <Text style={styles.clientHeaderText}>Client Details</Text>
+        <View style={styles.productSection}>
+          <View style={styles.productHeader}>
+            <Ionicons name="cube-outline" size={16} color="#00B761" />
+            <Text style={styles.productHeaderText}>Model Purchased</Text>
+          </View>
+          <Text style={styles.modelName}>
+            {job.model_purchased || job.product_model || "FL-Series Filter"}
+          </Text>
+          <Text style={styles.modelDetails}>
+            Capacity: {job.capacity || job.roof_capacity || "Standard Installation"}
+          </Text>
+          {job.special_instructions && (
+            <Text style={styles.instructions}>Note: {job.special_instructions}</Text>
+          )}
         </View>
-        <Text style={styles.clientName}>
-          {job.client?.name || job.customer_name || "N/A"}
-        </Text>
-        <Text style={styles.clientPhone}>
-          {job.client?.phone || job.customer_phone || "Contact not provided"}
-        </Text>
-        <Text style={styles.clientAddress} numberOfLines={2}>
-          {job.client?.address || job.installation_address || "Address not provided"}
-        </Text>
-      </View>
 
-      {/* Model & Product Details */}
-      <View style={styles.productSection}>
-        <View style={styles.productHeader}>
-          <Ionicons name="cube-outline" size={16} color="#00B761" />
-          <Text style={styles.productHeaderText}>Model Purchased</Text>
+        <View style={styles.locationSection}>
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={14} color="#666" />
+            <Text style={styles.locationText}>
+              {job.location || job.city || "Location TBD"}
+            </Text>
+          </View>
+          <View style={styles.locationRow}>
+            <Ionicons name="call-outline" size={14} color="#666" />
+            <Text style={styles.locationText}>
+              {job.client?.phone || job.customer_phone || "Contact: Via admin"}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.modelName}>
-          {job.model_purchased || job.product_model || "FL-Series Filter"}
-        </Text>
-        <Text style={styles.modelDetails}>
-          Capacity: {job.capacity || job.roof_capacity || "Standard Installation"}
-        </Text>
-        {job.special_instructions && (
-          <Text style={styles.instructions}>Note: {job.special_instructions}</Text>
+
+        {!isCompleted && job.status !== "under_review" && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.callButton}
+              onPress={() =>
+                handleCall(
+                  job.client?.phone || job.customer_phone,
+                  job.client?.name || job.customer_name || "Client"
+                )
+              }
+            >
+              <Ionicons name="call" size={16} color="white" />
+              <Text style={styles.callButtonText}>Call</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.completeButton}
+              onPress={() => {
+                console.log("Clicking complete button for job:", job.id);
+                openCompletionModal(job.id);
+              }}
+            >
+              <Ionicons name="camera" size={16} color="white" />
+              <Text style={styles.completeButtonText}>Mark Complete</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {job.status === "under_review" && (
+          <View style={styles.reviewInfo}>
+            <Ionicons name="time" size={16} color="#5856D6" />
+            <Text style={styles.reviewText}>
+              Images submitted - Awaiting admin review
+            </Text>
+          </View>
+        )}
+
+        {isCompleted && job.completion_date && (
+          <View style={styles.completionInfo}>
+            <Ionicons name="checkmark-circle" size={16} color="#34C759" />
+            <Text style={styles.completionText}>
+              Completed on {formatDate(job.completion_date)}
+            </Text>
+          </View>
         )}
       </View>
-
-      {/* Location & Contact */}
-      <View style={styles.locationSection}>
-        <View style={styles.locationRow}>
-          <Ionicons name="location-outline" size={14} color="#666" />
-          <Text style={styles.locationText}>
-            {job.location || job.city || "Location TBD"}
-          </Text>
-        </View>
-        <View style={styles.locationRow}>
-          <Ionicons name="call-outline" size={14} color="#666" />
-          <Text style={styles.locationText}>
-            {job.client?.phone || job.customer_phone || "Contact: Via admin"}
-          </Text>
-        </View>
-      </View>
-
-      {/* Action Buttons */}
-      {!isCompleted && job.status !== "under_review" && (
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.callButton}
-            onPress={() =>
-              handleCall(
-                job.client?.phone || job.customer_phone,
-                job.client?.name || job.customer_name || "Client"
-              )
-            }
-          >
-            <Ionicons name="call" size={16} color="white" />
-            <Text style={styles.callButtonText}>Call</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.completeButton}
-            onPress={() => openCompletionModal(job.id)}
-          >
-            <Ionicons name="camera" size={16} color="white" />
-            <Text style={styles.completeButtonText}>Mark Complete</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {job.status === "under_review" && (
-        <View style={styles.reviewInfo}>
-          <Ionicons name="time" size={16} color="#5856D6" />
-          <Text style={styles.reviewText}>
-            Images submitted - Awaiting admin review
-          </Text>
-        </View>
-      )}
-
-      {isCompleted && job.completion_date && (
-        <View style={styles.completionInfo}>
-          <Ionicons name="checkmark-circle" size={16} color="#34C759" />
-          <Text style={styles.completionText}>
-            Completed on {formatDate(job.completion_date)}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
+    );
+  };
 
   const ImageUploadCard = ({ 
     title, 
@@ -433,8 +639,8 @@ useEffect(() => {
         </View>
         <Text style={styles.imageUploadDescription}>{description}</Text>
         
-        {image && (
-          <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+        {signedUrls[type] && (
+          <Image source={{ uri: signedUrls[type] }} style={styles.imagePreview} />
         )}
         
         <View style={styles.imageUploadButton}>
@@ -448,163 +654,159 @@ useEffect(() => {
 
   return (
     <KYCProtected>
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Installation Jobs</Text>
-      </View>
-
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'pending' && styles.activeTab]}
-          onPress={() => setActiveTab('pending')}
-        >
-          <Ionicons 
-            name="time-outline" 
-            size={20} 
-            color={activeTab === 'pending' ? 'white' : '#666'} 
-          />
-          <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>
-            Pending Jobs
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
-          onPress={() => setActiveTab('completed')}
-        >
-          <Ionicons 
-            name="checkmark-done-outline" 
-            size={20} 
-            color={activeTab === 'completed' ? 'white' : '#666'} 
-          />
-          <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>
-            Job Completed
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content based on active tab */}
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl 
-            refreshing={activeTab === 'pending' ? loadingPending : loadingCompleted} 
-            onRefresh={handleRefresh} 
-          />
-        }
-      >
-        {activeTab === 'pending' ? (
-          <View style={styles.jobsList}>
-            {pendingJobs && pendingJobs.length > 0 ? (
-              pendingJobs.map((job, index) => (
-                <JobCard key={job.id || index} job={job} />
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="briefcase-outline" size={64} color="#E0E0E0" />
-                <Text style={styles.emptyTitle}>No Pending Jobs</Text>
-                <Text style={styles.emptyMessage}>
-                  New installation tasks assigned by admin will appear here
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.jobsList}>
-            {completedJobs && completedJobs.length > 0 ? (
-              completedJobs.map((job, index) => (
-                <JobCard key={job.id || index} job={job} isCompleted={true} />
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="checkmark-done-outline" size={64} color="#E0E0E0" />
-                <Text style={styles.emptyTitle}>No Completed Jobs</Text>
-                <Text style={styles.emptyMessage}>
-                  Completed installation tasks will appear here
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Job Completion Modal with Image Upload */}
-      <Modal
-        visible={showCompletionModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCompletionModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.completionModalContainer}>
-            <View style={styles.completionModalHeader}>
-              <Text style={styles.completionModalTitle}>Mark Job Complete</Text>
-              <TouchableOpacity 
-                onPress={() => setShowCompletionModal(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.completionModalSubtitle}>
-              Upload the following images to complete this job:
-            </Text>
-
-            <ScrollView style={styles.imageUploadList}>
-              <ImageUploadCard
-                title="Filter Box Serial Number"
-                description="Take a clear photo of the filter box showing the serial number"
-                type="serialNumber"
-                image={completionImages.serialNumber}
-                onPress={() => showImagePickerOptions('serialNumber')}
-              />
-
-              <ImageUploadCard
-                title="Warranty Card"
-                description="Upload photo of the completed warranty card"
-                type="warrantyCard"
-                image={completionImages.warrantyCard}
-                onPress={() => showImagePickerOptions('warrantyCard')}
-              />
-
-              <ImageUploadCard
-                title="Installation Photo"
-                description="Take a photo showing the completed installation"
-                type="installation"
-                image={completionImages.installation}
-                onPress={() => showImagePickerOptions('installation')}
-              />
-            </ScrollView>
-
-            <View style={styles.completionModalActions}>
-              <TouchableOpacity 
-                style={styles.cancelCompletionButton} 
-                onPress={() => setShowCompletionModal(false)}
-              >
-                <Text style={styles.cancelCompletionButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[
-                  styles.submitCompletionButton,
-                  (!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation || isUploading) && styles.submitCompletionButtonDisabled
-                ]} 
-                onPress={submitJobCompletion}
-                disabled={!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation || isUploading}
-              >
-                <Text style={styles.submitCompletionButtonText}>
-                  {isUploading ? 'Uploading...' : 'Submit for Review'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Installation Jobs</Text>
         </View>
-      </Modal>
 
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'pending' && styles.activeTab]}
+            onPress={() => setActiveTab('pending')}
+          >
+            <Ionicons 
+              name="time-outline" 
+              size={20} 
+              color={activeTab === 'pending' ? 'white' : '#666'} 
+            />
+            <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>
+              Pending Jobs
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
+            onPress={() => setActiveTab('completed')}
+          >
+            <Ionicons 
+              name="checkmark-done-outline" 
+              size={20} 
+              color={activeTab === 'completed' ? 'white' : '#666'} 
+            />
+            <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>
+              Job Completed
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-    </SafeAreaView>
+        <ScrollView
+          style={styles.content}
+          refreshControl={
+            <RefreshControl 
+              refreshing={activeTab === 'pending' ? loadingPending : loadingCompleted} 
+              onRefresh={handleRefresh} 
+            />
+          }
+        >
+          {activeTab === 'pending' ? (
+            <View style={styles.jobsList}>
+              {pendingJobs && pendingJobs.length > 0 ? (
+                pendingJobs.map((job, index) => (
+                  <JobCard key={job.id || index} job={job} />
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="briefcase-outline" size={64} color="#E0E0E0" />
+                  <Text style={styles.emptyTitle}>No Pending Jobs</Text>
+                  <Text style={styles.emptyMessage}>
+                    New installation tasks assigned by admin will appear here
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.jobsList}>
+              {completedJobs && completedJobs.length > 0 ? (
+                completedJobs.map((job, index) => (
+                  <JobCard key={job.id || index} job={job} isCompleted={true} />
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="checkmark-done-outline" size={64} color="#E0E0E0" />
+                  <Text style={styles.emptyTitle}>No Completed Jobs</Text>
+                  <Text style={styles.emptyMessage}>
+                    Completed installation tasks will appear here
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+        <Modal
+          visible={showCompletionModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowCompletionModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.completionModalContainer}>
+              <View style={styles.completionModalHeader}>
+                <Text style={styles.completionModalTitle}>Mark Job Complete</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowCompletionModal(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.completionModalSubtitle}>
+                Upload the following images to complete this job:
+              </Text>
+
+              <ScrollView style={styles.imageUploadList}>
+                <ImageUploadCard
+                  title="Filter Box Serial Number"
+                  description="Take a clear photo of the filter box showing the serial number"
+                  type="serialNumber"
+                  image={completionImages.serialNumber}
+                  onPress={() => pickImage('serialNumber')}
+                />
+
+                <ImageUploadCard
+                  title="Warranty Card"
+                  description="Upload photo of the completed warranty card"
+                  type="warrantyCard"
+                  image={completionImages.warrantyCard}
+                  onPress={() => pickImage('warrantyCard')}
+                />
+
+                <ImageUploadCard
+                  title="Installation Photo"
+                  description="Take a photo showing the completed installation"
+                  type="installation"
+                  image={completionImages.installation}
+                  onPress={() => pickImage('installation')}
+                />
+              </ScrollView>
+
+              <View style={styles.completionModalActions}>
+                <TouchableOpacity 
+                  style={styles.cancelCompletionButton} 
+                  onPress={() => setShowCompletionModal(false)}
+                >
+                  <Text style={styles.cancelCompletionButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[
+                    styles.submitCompletionButton,
+                    (!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation || isUploading) && styles.submitCompletionButtonDisabled
+                  ]} 
+                  onPress={submitJobCompletion}
+                  disabled={!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation || isUploading}
+                >
+                  <Text style={styles.submitCompletionButtonText}>
+                    {isUploading ? 'Uploading...' : 'Submit for Review'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+      </SafeAreaView>
     </KYCProtected>
   );
 }
@@ -629,8 +831,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1A1A1A',
   },
-
-
 
   // Tab Navigation
   tabContainer: {

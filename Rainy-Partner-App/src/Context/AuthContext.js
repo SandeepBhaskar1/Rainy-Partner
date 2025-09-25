@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { BACKEND_URL_LOCAL } from '@env';
+import { navigate } from 'expo-router/build/global-state/routing';
 
 const AuthContext = createContext(undefined);
 
@@ -12,7 +14,7 @@ export function AuthProvider({ children }) {
 
     const checkAuthStatus = async () => {
         try {
-            const storedToken = await AsyncStorage.getItem('access_token');
+            const storedToken = await SecureStore.getItemAsync('access_token');
             const storedUser = await AsyncStorage.getItem('user_data');
 
             if (storedToken && storedUser) {
@@ -50,14 +52,13 @@ export function AuthProvider({ children }) {
     // Login function to save token & user
     const login = async (accessToken, userData) => {
         try {
-            await AsyncStorage.setItem('access_token', accessToken);
+            await SecureStore.setItemAsync('access_token', accessToken);
             await AsyncStorage.setItem('user_data', JSON.stringify(userData));
 
             const userWithToken = { ...userData, access_token: accessToken };
             setUser(userWithToken);
             setToken(accessToken);
 
-            console.log('✅ User logged in successfully:', userWithToken);
             return true;
         } catch (error) {
             console.error('❌ Login error:', error);
@@ -91,9 +92,11 @@ export function AuthProvider({ children }) {
     // Logout
     const logout = async () => {
         try {
-            await AsyncStorage.multiRemove(['access_token', 'user_data']);
+            await SecureStore.deleteItemAsync('access_token');
+            await AsyncStorage.clear();
             setUser(null);
             setToken(null);
+            navigate('login');
             console.log('✅ User logged out');
         } catch (error) {
             console.error('❌ Logout error:', error);

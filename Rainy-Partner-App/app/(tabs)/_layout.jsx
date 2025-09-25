@@ -17,10 +17,12 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: 'white',
           borderTopWidth: 1,
+          margin: 0,
           borderTopColor: '#E0E0E0',
-          height: 65,
+          height: 70,
         },
         headerShown: false,
+        safeAreaInsets: { top: 0, bottom: 0 },
       }}
     >
       <Tabs.Screen

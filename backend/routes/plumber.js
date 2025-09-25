@@ -36,9 +36,7 @@ router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
 
   res.json(profile);
   console.log(user.service_area_pin);
-  
 }));
-
 
 // Update plumber profile
 router.put('/profile', verifyPlumberToken, [
@@ -74,18 +72,17 @@ router.put('/profile', verifyPlumberToken, [
   res.json({ message: 'Profile updated successfully', profile: user.getProfile() });
 }));
 
-// Agrement Accpting
-
+// Agreement Accepting
 router.put(
   '/agreement',
   verifyPlumberToken,
   asyncHandler(async (req, res) => {
-    const userId = req.user.user_id; // extracted from JWT
+    const userId = req.user.user_id;
 
     const user = await User.findByIdAndUpdate(
       userId,
-      { $set: { agreement_status: true } }, // ✅ update here
-      { new: true } // ✅ return updated doc
+      { $set: { agreement_status: true } },
+      { new: true }
     );
 
     if (!user) {
@@ -99,54 +96,116 @@ router.put(
   })
 );
 
-// Get assigned jobs
+// CORRECTED: Get assigned jobs (excluding completed ones)
 router.get(
   '/assigned-jobs',
   verifyPlumberToken,
   asyncHandler(async (req, res) => {
-    const plumberId = req.user.user_id;
+    const plumberUserId = req.user.user_id.toString();
+    console.log('Fetching assigned jobs for plumber:', plumberUserId);
 
-    // Use the static method from Lead model
-    const leads = await Lead.findByPlumber(plumberId);
+    try {
+      const db = mongoose.connection.db;
+      
+      // Find jobs that are NOT completed
+      const leads = await db.collection('leads').find({
+        assigned_plumber_id: plumberUserId,
+        status: { 
+          $nin: ['completed', 'Completed'] // Exclude completed jobs
+        }
+      }).toArray();
+
+      console.log('Found assigned jobs:', leads.length);
+
+      if (!leads || leads.length === 0) {
+        return res.status(200).json({ 
+          message: 'No pending jobs assigned yet', 
+          jobs: [] 
+        });
+      }
+
+      // Format the response
+      const jobs = leads.map(lead => ({
+        id: lead._id.toString(),
+        client: lead.client,
+        status: lead.status,
+        model_purchased: lead.model_purchased,
+        created_at: lead.created_at,
+        completion_submitted_at: lead.completion_submitted_at,
+        completion_images: lead.completion_images || {
+          installation_url: "",
+          serial_number_url: "",
+          warranty_card_url: ""
+        }
+      }));
+
+      res.json({ jobs });
+    } catch (error) {
+      console.error('Error fetching assigned jobs:', error);
+      res.status(500).json({ 
+        detail: 'Failed to fetch assigned jobs',
+        error: error.message 
+      });
+    }
+  })
+);
+
+// CORRECTED: Get completed jobs
+router.get('/completed-jobs', verifyPlumberToken, asyncHandler(async (req, res) => {
+  const plumberUserId = req.user.user_id.toString();
+  console.log('Fetching completed jobs for plumber:', plumberUserId);
+
+  try {
+    const db = mongoose.connection.db;
+    
+    // Find only completed jobs
+    const leads = await db.collection('leads').find({
+      assigned_plumber_id: plumberUserId,
+      status: { 
+        $in: ['completed', 'Completed'] // Only completed jobs
+      }
+    }).sort({ completion_date: -1 }).toArray(); // Sort by completion date, newest first
+
+    console.log('Found completed jobs:', leads.length);
 
     if (!leads || leads.length === 0) {
-      return res.status(200).json({ message: 'No jobs assigned yet', jobs: [] });
+      return res.status(200).json({ 
+        message: 'No completed jobs yet', 
+        jobs: [] 
+      });
     }
 
-    // Sanitize the response
+    // Format the response (same structure as assigned jobs)
     const jobs = leads.map(lead => ({
-      id: lead._id,
+      id: lead._id.toString(),
       client: lead.client,
       status: lead.status,
       model_purchased: lead.model_purchased,
       created_at: lead.created_at,
+      completion_date: lead.completion_date,
       completion_submitted_at: lead.completion_submitted_at,
-      completion_images: lead.completion_images || {}
+      completion_images: lead.completion_images || {
+        installation_url: "",
+        serial_number_url: "",
+        warranty_card_url: ""
+      }
     }));
 
     res.json({ jobs });
-  })
-);
-
+  } catch (error) {
+    console.error('Error fetching completed jobs:', error);
+    res.status(500).json({ 
+      detail: 'Failed to fetch completed jobs',
+      error: error.message 
+    });
+  }
+}));
 
 // Get plumber orders
 router.get('/orders', verifyPlumberToken, asyncHandler(async (req, res) => {
   const orders = await Order.findByPlumber(req.user.user_id);
-  
   res.json(orders);
 }));
-
-router.get('/completed-jobs', verifyPlumberToken, async (req, res) => {
-  try {
-    const plumberId = req.user._id;
-    const jobs = await Lead.find({ plumberId, status: 'completed' }).sort({ completedAt: -1 });
-
-    res.json(jobs);
-  } catch (error) {
-    console.error('Error fetching completed jobs:', error);
-    res.status(500).json({ detail: 'Failed to fetch completed jobs' });
-  }
-});
 
 // Place new order
 router.post('/place-order', verifyPlumberToken, [
@@ -175,7 +234,7 @@ router.post('/place-order', verifyPlumberToken, [
 
   // Create new order
   const order = new Order({
-    id : uuidv4(),
+    id: uuidv4(),
     plumber_id: req.user.user_id,
     client,
     items,
@@ -194,8 +253,118 @@ router.post('/place-order', verifyPlumberToken, [
   });
 }));
 
-// Submit job completion
-router.post('/jobs/submit-completion', verifyPlumberToken, asyncHandler(async (req, res) => {
+// CORRECTED: Submit job completion
+router.post(
+  '/jobs/submit-completion',
+  verifyPlumberToken,
+  asyncHandler(async (req, res) => {
+    const { job_id, serial_number_image_key, warranty_card_image_key, installation_image_key } = req.body;
+
+    console.log('=== JOB SUBMISSION DEBUG ===');
+    console.log('Received job_id:', job_id);
+    
+    const plumberUserId = req.user.user_id.toString();
+    console.log('Plumber user ID (string):', plumberUserId);
+
+    if (!job_id || !serial_number_image_key || !warranty_card_image_key || !installation_image_key) {
+      return res.status(400).json({ detail: 'Job ID and all image keys are required' });
+    }
+
+    const db = mongoose.connection.db;
+
+    // Try all possible ID formats to find the job
+    let job = null;
+    
+    // Try finding by custom 'id' field first
+    job = await db.collection('leads').findOne({ id: job_id });
+    console.log('Job found by id field:', !!job);
+    
+    if (!job) {
+      // Try finding by _id as string
+      job = await db.collection('leads').findOne({ _id: job_id });
+      console.log('Job found by _id (string):', !!job);
+    }
+    
+    if (!job && job_id.length === 24) {
+      // Try finding by _id as ObjectId (if job_id looks like ObjectId)
+      try {
+        job = await db.collection('leads').findOne({ _id: new mongoose.Types.ObjectId(job_id) });
+        console.log('Job found by _id (ObjectId):', !!job);
+      } catch (error) {
+        console.log('Invalid ObjectId format');
+      }
+    }
+
+    if (!job) {
+      return res.status(404).json({ 
+        detail: 'Job not found in database',
+        debug: {
+          job_id_searched: job_id,
+          job_id_length: job_id.length,
+          tried_formats: ['id', '_id_string', '_id_objectid'],
+          found: false
+        }
+      });
+    }
+
+    console.log('Found job:', {
+      id: job.id,
+      _id: job._id,
+      assigned_plumber_id: job.assigned_plumber_id,
+      status: job.status
+    });
+
+    // Check if job is assigned to this plumber
+    if (job.assigned_plumber_id !== plumberUserId) {
+      return res.status(403).json({ 
+        detail: 'Job is not assigned to you',
+        debug: {
+          job_assigned_to: job.assigned_plumber_id,
+          your_user_id: plumberUserId,
+          ids_match: job.assigned_plumber_id === plumberUserId
+        }
+      });
+    }
+
+    // Check if job is in correct status
+    const validStatuses = ['Assigned', 'assigned', 'in_progress'];
+    if (!validStatuses.includes(job.status)) {
+      return res.status(400).json({ 
+        detail: 'Job is not in a status that allows completion',
+        debug: {
+          current_status: job.status,
+          valid_statuses: validStatuses
+        }
+      });
+    }
+
+    const completionData = {
+      status: 'under_review',
+      completion_submitted_at: new Date(),
+      completion_images: {
+        serial_number_key: serial_number_image_key,
+        warranty_card_key: warranty_card_image_key,
+        installation_key: installation_image_key,
+      },
+      completion_submitted_by: plumberUserId,
+    };
+
+    // Update using the same ID format that found the job
+    const updateFilter = job.id ? { id: job.id } : { _id: job._id };
+    const result = await db.collection('leads').updateOne(updateFilter, { $set: completionData });
+
+    console.log('Update result:', result);
+
+    res.json({
+      success: true,
+      message: 'Job completion submitted successfully',
+      status: 'under_review',
+    });
+  })
+);
+
+// ADDITIONAL: Admin endpoint to approve job completion (for reference)
+router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(async (req, res) => {
   const { job_id } = req.body;
   
   if (!job_id) {
@@ -204,37 +373,46 @@ router.post('/jobs/submit-completion', verifyPlumberToken, asyncHandler(async (r
 
   const db = mongoose.connection.db;
   
-  // Check if job exists and is assigned to this plumber
-  const job = await db.collection('leads').findOne({
-    id: job_id,
-    assigned_plumber_id: req.user.user_id,
-    status: { $in: ['Assigned', 'assigned'] }
-  });
-
+  // Find the job
+  let job = null;
+  if (job_id.length === 24) {
+    try {
+      job = await db.collection('leads').findOne({ _id: new mongoose.Types.ObjectId(job_id) });
+    } catch (error) {
+      // Try other formats if ObjectId fails
+    }
+  }
+  
   if (!job) {
-    return res.status(404).json({ detail: 'Job not found or not assigned to you' });
+    job = await db.collection('leads').findOne({ id: job_id });
   }
 
-  // For now, simulate image upload (in real implementation, handle file uploads)
+  if (!job) {
+    return res.status(404).json({ detail: 'Job not found' });
+  }
+
+  if (job.status !== 'under_review') {
+    return res.status(400).json({ 
+      detail: 'Job is not under review',
+      current_status: job.status 
+    });
+  }
+
+  // Mark as completed
   const completionData = {
-    status: 'under_review',
-    completion_submitted_at: new Date(),
-    completion_images: {
-      serial_number_url: 'placeholder_serial_image.jpg',
-      warranty_card_url: 'placeholder_warranty_image.jpg',
-      installation_url: 'placeholder_installation_image.jpg'
-    },
-    completion_submitted_by: req.user.user_id
+    status: 'completed', // This will move job to completed section
+    completion_date: new Date(),
+    approved_by: req.user.user_id,
+    approved_at: new Date()
   };
 
-  await db.collection('leads').updateOne(
-    { id: job_id },
-    { $set: completionData }
-  );
+  const updateFilter = job.id ? { id: job.id } : { _id: job._id };
+  await db.collection('leads').updateOne(updateFilter, { $set: completionData });
 
   res.json({
-    message: 'Job completion submitted successfully',
-    status: 'under_review'
+    success: true,
+    message: 'Job completion approved successfully',
+    status: 'completed'
   });
 }));
 
