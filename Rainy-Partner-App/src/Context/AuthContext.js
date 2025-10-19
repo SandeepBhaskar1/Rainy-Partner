@@ -11,6 +11,12 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [Backend_url, setBackend_url] = useState(null);
+
+    useEffect(() => {
+        const url = process.env.BACKEND_URL_LOCAL;
+        setBackend_url(url);
+    }, []); 
 
     const checkAuthStatus = async () => {
         try {
@@ -24,32 +30,54 @@ export function AuthProvider({ children }) {
                 setToken(storedToken);
             } 
         } catch (error) {
-            console.error('❌ Error checking auth status:', error);
+            console.error('Error checking auth status:', error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Request OTP
+    useEffect(() => {
+        checkAuthStatus();
+
+        // CORRECTION: Updated interceptor to exclude agreement and profile endpoints from auto-logout on 401
+        const interceptor = axios.interceptors.response.use(
+            response => response,
+            async (error) => {
+                const isAgreementRequest = error.config?.url?.includes('/plumber/agreement');
+                const isProfileRequest = error.config?.url?.includes('/profile');
+                
+                // CORRECTION: Only logout if 401 occurs on non-critical endpoints
+                if (error.response?.status === 401 && !isAgreementRequest && !isProfileRequest){
+                    console.warn('Token Expired, logging out...');
+                    await logout()
+                }
+                return Promise.reject(error);
+            }
+        ); 
+
+        return () => {
+            axios.interceptors.response.eject(interceptor)
+        }
+    }, [])
+
     const requestOtp = async (identifier) => {
         try {
-            console.log('🟢 Sending OTP request to:', `${BACKEND_URL_LOCAL}/auth/send-otp`, 'with identifier:', identifier);
+            console.log('Sending OTP request to:', `${BACKEND_URL_LOCAL}/auth/send-otp`, 'with identifier:', identifier);
 
             const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/send-otp`, { identifier });
 
-            console.log('📨 OTP API response:', response.data);
+            console.log('OTP API response:', response.data);
 
-            const otp = response.data?.otp; // Make sure we use response.data
-            console.log('✅ OTP from response:', otp);
+            const otp = response.data?.otp;
+            console.log('OTP from response:', otp);
 
             return response.data;
         } catch (error) {
-            console.error('❌ Error requesting OTP:', error.response?.data || error.message);
+            console.error('Error requesting OTP:', error.response?.data || error.message);
             throw new Error(error.response?.data?.detail || 'Failed to request OTP');
         }
     };
 
-    // Login function to save token & user
     const login = async (accessToken, userData) => {
         try {
             await SecureStore.setItemAsync('access_token', accessToken);
@@ -61,15 +89,14 @@ export function AuthProvider({ children }) {
 
             return true;
         } catch (error) {
-            console.error('❌ Login error:', error);
+            console.error('Login error:', error);
             throw error;
         }
     };
 
-    // Verify OTP
     const loginWithOTP = async (identifier, otp) => {
         try {
-            console.log('🟢 Verifying OTP for identifier:', identifier, 'OTP:', otp);
+            console.log('Verifying OTP for identifier:', identifier, 'OTP:', otp);
 
             const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/verify-otp`, {
                 identifier,
@@ -78,18 +105,17 @@ export function AuthProvider({ children }) {
 
             const data = response.data;
             if (!data || !data.access_token || !data.user) {
-                console.error('❌ Invalid response from backend:', data);
+                console.error('Invalid response from backend:', data);
                 throw new Error('Invalid response from server');
             }
 
             return await login(data.access_token, data.user);
         } catch (error) {
-            console.error('❌ Login error:', error.response?.data || error.message);
+            console.error('Login error:', error.response?.data || error.message);
             throw new Error(error.response?.data?.detail || 'Login failed');
         }
     };
 
-    // Logout
     const logout = async () => {
         try {
             await SecureStore.deleteItemAsync('access_token');
@@ -97,9 +123,9 @@ export function AuthProvider({ children }) {
             setUser(null);
             setToken(null);
             navigate('login');
-            console.log('✅ User logged out');
+            console.log('User logged out');
         } catch (error) {
-            console.error('❌ Logout error:', error);
+            console.error('Logout error:', error);
         }
     };
 
@@ -108,7 +134,7 @@ export function AuthProvider({ children }) {
 
         const initAuth = async () => {
             if (mounted) {
-                console.log('🟢 Initializing auth status');
+                console.log('Initializing auth status');
                 await checkAuthStatus();
             }
         };
@@ -122,13 +148,16 @@ export function AuthProvider({ children }) {
 
     const contextValue = {
         user,
+        setUser,
         token,
+        setToken,
         isLoading,
         requestOtp,
         login,
         loginWithOTP,
         logout,
         checkAuthStatus,
+        Backend_url
     };
 
     return (

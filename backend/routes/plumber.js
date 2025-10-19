@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Order = require('../models/Order');
 const { v4: uuidv4 } = require('uuid');
 const Lead = require('../models/Lead');
+const { token } = require('morgan');
 
 const router = express.Router();
 
@@ -60,6 +61,7 @@ router.put('/profile', verifyPlumberToken, [
     return res.status(404).json({ detail: 'Plumber not found' });
   }
 
+
   // Update allowed fields
   const allowedFields = ['name', 'email', 'address', 'experience', 'tools'];
   allowedFields.forEach(field => {
@@ -71,6 +73,91 @@ router.put('/profile', verifyPlumberToken, [
   await user.save();
   res.json({ message: 'Profile updated successfully', profile: user.getProfile() });
 }));
+
+
+router.get('/stats', async (req, res) => {
+  try {
+    // Fetch plumbers count and KYC status directly from MongoDB
+    const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
+    const approved = plumbers.filter(p => p.kyc_status === 'approved').length;
+    const pending = plumbers.filter(p => p.kyc_status === 'pending').length;
+    const rejected = plumbers.filter(p => p.kyc_status === 'rejected').length;
+
+    // Fetch orders and leads counts
+    const ordersCount = await Order.countDocuments();
+    const leadsCount = await Lead.countDocuments();
+
+    // Count open installations and awaiting dispatch directly
+    const openInstallations = await Lead.countDocuments({ status: /pending/i });
+    const awaitingDispatch = await Order.countDocuments({ status: /processing/i });
+
+    const unassignedLeads = await Lead.find({ status: { $in: ["not-assigned", "Pending"] }})
+      .select('client model_purchased created_at')
+      .sort({ created_at: -1 })
+      .lean();
+
+    // Debug: Let's see what your query range actually is
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+
+    const nowIST = new Date(now.getTime() + istOffset);
+    console.log('Current IST Time:', nowIST.toISOString());
+
+    const startOfTodayUTC = new Date(Date.UTC(
+      nowIST.getUTCFullYear(),
+      nowIST.getUTCMonth(),
+      nowIST.getUTCDate()
+    ) - istOffset);
+
+    const endOfTodayUTC = new Date(Date.UTC(
+      nowIST.getUTCFullYear(),
+      nowIST.getUTCMonth(),
+      nowIST.getUTCDate(),
+      23, 59, 59, 999
+    ) - istOffset);
+
+    const todayOrders = await Order.find({
+      created_at: { $gte: startOfTodayUTC, $lte: endOfTodayUTC }
+    }).select('total_amount created_at');
+
+    console.log('\nMatched orders:', todayOrders);
+    const todayOrderCount = todayOrders.length;
+    const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+
+    const allOrders = await Order.find()
+      .select('created_at total_amount')
+      .sort({ created_at: -1 })
+      .lean();
+
+    res.status(200).json({
+      plumbers: {
+        total: plumbers.length,
+        approved,
+        pending,
+        rejected
+      },
+      orders: {
+        total: ordersCount,
+        awaitingDispatch,
+        todayOrders: todayOrderCount,
+        todayRevenue
+      },
+      leads: {
+        total: leadsCount,
+        openInstallations,
+        unassigned: unassignedLeads
+      },
+      ordersList: allOrders  // ✅ ADD THIS LINE
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({
+      detail: 'Error fetching stats',
+      error: error.message
+    });
+  }
+});
+
 
 // Agreement Accepting
 router.put(
@@ -92,6 +179,7 @@ router.put(
     res.json({
       message: 'Agreement accepted successfully',
       agreement_status: user.agreement_status,
+      user: user,
     });
   })
 );

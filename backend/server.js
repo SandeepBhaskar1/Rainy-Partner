@@ -9,9 +9,10 @@ require('dotenv').config();
 // Import routes
 const authRoutes = require('./routes/auth');
 const plumberRoutes = require('./routes/plumber');
+const leadsRoutes = require('./routes/leads');
 const adminRoutes = require('./routes/admin');
-const generalRoutes = require('./routes/general');
-const projectRoute = require('./routes/picture');
+  const generalRoutes = require('./routes/general');
+  const projectRoute = require('./routes/picture');
 const userRoute = require('./routes/userRegister')
 
 
@@ -31,7 +32,7 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors({
-  origin: ['http://localhost:8081', 'exp://s14wb3g-anonymous-8081.exp.direct'],
+  origin: ['http://localhost:8081', 'exp://s14wb3g-anonymous-8081.exp.direct', 'http://localhost:5173', 'http://10.34.196.196', 'exp://10.34.196.196:8081'],
   credentials: true,
   optionsSuccessStatus: 200
 }));
@@ -60,6 +61,8 @@ app.use('/api/onboarding', userRoute);
 app.use('/api/profile', userRoute);
 
 app.use('/api/plumber', plumberRoutes);
+
+app.use('/api/post-leads', leadsRoutes);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -154,7 +157,7 @@ process.on('SIGINT', async () => {
 // Start server
 const PORT = process.env.PORT || 8001;
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://192.168.1.40:${PORT}`);
+  console.log(`Server running on http://192.168.1.41:${PORT}`);
 });
 
 // Handle unhandled promise rejections

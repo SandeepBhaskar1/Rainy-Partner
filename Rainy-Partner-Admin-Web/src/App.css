@@ -1,0 +1,7 @@
+body{
+    margin: 0;
+    background: #fafafc;
+    width: 100%;
+    overflow-x: hidden;
+     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
+}

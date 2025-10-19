@@ -1,0 +1,55 @@
+.stats-container {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 20px;
+  padding: 0px;
+  margin-top: 0rem;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  min-width: 6rem;
+  height: 6rem;
+  padding: 15px;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.icon-wrapper {
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  width: 30px;
+  height: 30px;
+}
+
+.icon.users, .icon.kyc, .icon.orders, .icon.dispatch, .icon.installations  { color: #3b82f6; }
+
+
+.stat-info h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.stat-info p {
+  margin: 5px 0 0 0;
+  font-size: 20px;
+  font-weight: bold;
+  color: #111;
+}

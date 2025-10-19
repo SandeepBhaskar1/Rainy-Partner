@@ -19,6 +19,8 @@ import { useAuth } from '../src/Context/AuthContext';
 import { router } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// CORRECTION: Added SecureStore import for secure token storage
+import * as SecureStore from 'expo-secure-store';
 
 export default function LoginScreen({ navigation }) {
     const [identifier, setIdentifier] = useState('');
@@ -77,6 +79,12 @@ const sendOTP = async () => {
                 const userDataStr = await AsyncStorage.getItem('user_data');
                 const userData = userDataStr ? JSON.parse(userDataStr) : null;
 
+                // CORRECTION: Get token from AsyncStorage and store in SecureStore
+                const token = await AsyncStorage.getItem('access_token');
+                if (token) {
+                    await SecureStore.setItemAsync('access_token', token);
+                }
+
                 if (userData?.needs_onboarding) {
                     router.replace('/onboarding');
                 } else {
@@ -118,7 +126,7 @@ const sendOTP = async () => {
                             marginBottom: 50,
                         }}>
                             <Image
-                                source={require('../assets/Rainy_Filter_Logo.png')}
+                                source={require('../assets/Rainy_Filter_Logo-01.png')}
                                 style={{
                                     width: 80,
                                     height: 80,
@@ -285,7 +293,27 @@ const sendOTP = async () => {
 }
 
 const styles = StyleSheet.create({
-
+    // CORRECTION: Added missing buttonDisabled style
+    buttonDisabled: {
+        backgroundColor: '#666',
+    },
+    // CORRECTION: Added missing buttonText style
+    buttonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    // CORRECTION: Added missing inputContainer style
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
     input: {
         flex: 1,
         color: 'white',

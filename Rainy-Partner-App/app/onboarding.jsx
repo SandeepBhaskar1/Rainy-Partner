@@ -4,6 +4,7 @@ import {
     TouchableOpacity, Image, Platform,
     Alert
 } from "react-native";
+import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -59,25 +60,33 @@ export default function Onboarding() {
     
     const getSignedUrlFromKey = async (s3Key, token) => {
         try {
-            const response = await axios.post(`${BACKEND_URL_LOCAL}/get-image`, {key: s3Key}, {headers: {Authorization: `Bearer ${token}`}});
-            if(response.data.success){
+            const response = await axios.post(
+                `${BACKEND_URL_LOCAL}/get-image`,
+                { key: s3Key },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (response.data.success) {
                 console.log(response.data.url);
-                return response.data.url
-                
+                return response.data.url;
             } else {
-                throw new Error(response.data.message)
+                throw new Error(response.data.message);
             }
         } catch (error) {
-            console.error('Error getting Signed Url');
+            console.error('Error getting Signed URL:', error);
             return null;
         }
     };
 
-        const loadSignedUrl = async (s3Key, docType) => {
+    const loadSignedUrl = async (s3Key, docType) => {
         if (!s3Key) return;
         
         try {
-            const token = await AsyncStorage.getItem("access_token");
+            // CHANGED: Retrieve token from SecureStore instead of AsyncStorage
+            const token = await SecureStore.getItemAsync("access_token");
+            if (!token) {
+                console.warn("Token not found for loading signed URL");
+                return;
+            }
             const signedUrl = await getSignedUrlFromKey(s3Key, token);
             
             if (signedUrl) {
@@ -91,7 +100,7 @@ export default function Onboarding() {
         }
     };
 
-        useEffect(() => {
+    useEffect(() => {
         Object.keys(formData).forEach(key => {
             if (formData[key] && ['profile', 'aadhaar_front', 'aadhaar_back', 'license_front', 'license_back'].includes(key)) {
                 loadSignedUrl(formData[key], key);
@@ -118,7 +127,7 @@ export default function Onboarding() {
                     Alert.alert("Invalid PIN code", "Please enter a valid 6-digit PIN code.");
                     setFormData(prev => ({
                         ...prev,
-                        pin:'',
+                        pin: '',
                         city: '',
                         district: '',
                         state: ''
@@ -138,252 +147,295 @@ export default function Onboarding() {
         }
     };
 
-const pickImage = async (type) => {
-    Alert.alert("Upload Image", "Choose an option", [
-        {
-            text: "Take Photo",
-            onPress: async () => {
-                const { status } = await ImagePicker.requestCameraPermissionsAsync();
-                if (status !== 'granted') {
-                    alert('Camera permission is required to take photos.');
-                    return;
+    const pickImage = async (type) => {
+        Alert.alert("Upload Image", "Choose an option", [
+            {
+                text: "Take Photo",
+                onPress: async () => {
+                    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                    if (status !== 'granted') {
+                        alert('Camera permission is required to take photos.');
+                        return;
+                    }
+
+                    const result = await ImagePicker.launchCameraAsync({
+                        allowsEditing: true,
+                        aspect: [1, 1],
+                        quality: 0.7,
+                    });
+
+                    if (!result.canceled) {
+                        const file = await validateAndSetImage(result.assets[0], type);
+                        if (file) {
+                            await handleUpload(type, file);
+                        }
+                    }
                 }
+            },
+            {
+                text: "Choose from Gallery",
+                onPress: async () => {
+                    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    if (status !== 'granted') {
+                        alert('Media library permission is required to select photos.');
+                        return;
+                    }
 
-                const result = await ImagePicker.launchCameraAsync({
-                    allowsEditing: true,
-                    aspect: [1, 1],
-                    quality: 0.7,
-                });
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                        allowsEditing: true,
+                        aspect: [1, 1],
+                        quality: 0.7,
+                    });
 
-                if (!result.canceled) {
-                    const file = await validateAndSetImage(result.assets[0], type);
-
-                    if(file) {await handleUpload(type, file)};
+                    if (!result.canceled) {
+                        console.log('Image Picked:', result.assets[0], type);
+                        const file = await validateAndSetImage(result.assets[0], type);
+                        if (file) {
+                            await handleUpload(type, file);
+                        }
+                    }
                 }
-            }
-        },
-        {
-            text: "Choose from Gallery",
-            onPress: async () => {
-                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                if (status !== 'granted') {
-                    alert('Media library permission is required to select photos.');
-                    return;
-                }
+            },
+            { text: "Cancel", style: "cancel" }
+        ]);
+    };
 
-                const result = await ImagePicker.launchImageLibraryAsync({
-                    allowsEditing: true,
-                    aspect: [1, 1],
-                    quality: 0.7,
-                });
+    const validateAndSetImage = async (file, docType) => {
+        const fileUri = file.uri;
+        const ext = file.mimeType.split('/')[1];
 
-                if (!result.canceled) {
-                    console.log('Imaged Picked:', result.assets[0], type);
-                   const file = await validateAndSetImage(result.assets[0], type);
+        const allowedFileTypes = ['jpg', 'jpeg', 'png'];
 
-                   if (file) {await handleUpload(type, file)};
-                }
-            }
-        },
-        { text: "Cancel", style: "cancel" }
-    ]);
-};
+        if (!allowedFileTypes.includes(ext)) {
+            Alert.alert('Invalid File Type', 'Please select a valid file type (jpg, jpeg, png).');
+            return null;
+        }
 
+        const info = await FileSystem.getInfoAsync(file.uri);
+        if (info.size > MAX_FILE_SIZE) {
+            Alert.alert('File Too Large', 'File size exceeds 2MB. Please select a smaller file.');
+            return null;
+        }
 
-const validateAndSetImage = async (file, docType) => {
-    const fileUri = file.uri;
-    const ext = file.mimeType.split('/')[1];
-
-    const allowedFileTypes = ['jpg', 'jpeg', 'png'];
-
-    if(!allowedFileTypes.includes(ext)){
-        Alert.alert('Please select a valid file type (jpg, jpeg, png).')
-        return null;
-    }
-
-    const info = await FileSystem.getInfoAsync(file.uri);
-    if (info.size > MAX_FILE_SIZE){
-        Alert.alert('File size exceeds 2MB. Please select a smaller file.')
-        return null;
-    }
-
-    const validatedFile = {
+        const validatedFile = {
             uri: fileUri,
             type: `image/${ext}`,
             ext,
             docType
-        }
+        };
 
-    setImages(prev => ({
-        ...prev,
-        [docType]: validatedFile
-    }));    
-    return validatedFile;
-    
-};
-
-const extractS3Key = (url) => {
-    try {
-        const urlObj = new URL(url);
-        return urlObj.pathname.substring(1);
-    } catch (error) {
-        console.error('Error extracting S3 Key:', error);
-        return url;
-    }
-}
-
-const handleUpload = async (docType, file) => {
-    // const file = images[docType];
-    if (!file) {
-        Alert.alert(`No file selected. Please upload ${docType} first.`);
-        return;
-    }
-
-    try {
-    const token = await AsyncStorage.getItem("access_token");
-    const response = await axios.post(
-        `${BACKEND_URL_LOCAL}/uploadurl`,
-        {
-            docType: file.docType,
-            fileType: file.ext,
-            fileName: `${Date.now()}-${docType}.${file.ext}`,
-        },
-        {headers: { Authorization: `Bearer ${token}`}}
-    )
-
-    const signedUrl = response.data.url;
-
-    const uploadedUrl = await uploadToS3 (file.uri, signedUrl, file.type);
-
-    if (uploadedUrl) {
-        console.log('File Uploaded Successfully:', uploadedUrl);
-        const s3Key = extractS3Key(uploadedUrl);
-        updateFormData(docType, s3Key);
-        console.log(s3Key);
-        
-    }
-     
-} catch (error) {
-    console.error("Error getting signed url:", error);
-    Alert.alert("Error", "Could not get signed URL from server");
-}}
-
-const uploadToS3 = async (fileUri, signedUrl, fileType) => {
-    try {
-        const response = await fetch(fileUri);
-        const blob = await response.blob();
-
-        await fetch(signedUrl, {
-            method: "PUT",
-            headers: {
-                "Content-Type": fileType
-            },
-            body: blob,
-        }); 
-        const cleanUrl = signedUrl.split('?')[0];
-        return cleanUrl;
-} catch (error){
-    console.error("Error uploading file to S3", error);
-    Alert.alert("Upload Failed");
-    return null;
-}};
-
-const submitOnboarding = async () => {
-  setIsLoading(true);
-
-  // Required field validation
-  if (
-    !formData.name ||
-    !formData.address ||
-    !formData.pin ||
-    !formData.city ||
-    !formData.district ||
-    !formData.state ||
-    !formData.service_area_pin ||
-    !formData.experience ||
-    !formData.tools ||
-    !formData.aadhaar_number ||
-    !formData.plumber_license_number
-  ) {
-    Alert.alert("Please fill all required fields.");
-    setIsLoading(false);
-    return;
-  }
-
-  if (
-    !formData.aadhaar_front ||
-    !formData.aadhaar_back ||
-    !formData.license_front ||
-    !formData.license_back
-  ) {
-    Alert.alert("Please upload all the required documents.");
-    setIsLoading(false);
-    return;
-  }
-
-  try {
-    const token = await AsyncStorage.getItem("access_token");
-    const userDataString = await AsyncStorage.getItem("user_data");
-    const userData = userDataString ? JSON.parse(userDataString) : null;
-
-    if (!userData || !userData.id || !userData.phone) {
-      Alert.alert("Error", "User data is missing. Please log in again.");
-      setIsLoading(false);
-      return;
-    }
-
-    const payload = {
-      id: userData.id,
-      phone: userData.phone,
-      name: formData.name,
-      address: formData.address,
-      pin: formData.pin,
-      city: formData.city,
-      district: formData.district,
-      state: formData.state,
-      service_area_pin: formData.service_area_pin,
-      experience: formData.experience,
-      tools: formData.tools,
-      aadhaar_number: formData.aadhaar_number,
-      plumber_license_number: formData.plumber_license_number,
-      profile: formData.profile,
-      aadhaar_front: formData.aadhaar_front,
-      aadhaar_back: formData.aadhaar_back,
-      license_front: formData.license_front,
-      license_back: formData.license_back,
+        setImages(prev => ({
+            ...prev,
+            [docType]: validatedFile
+        }));    
+        return validatedFile;
     };
 
-    const response = await axios.post(
-      `${BACKEND_URL_LOCAL}/onboarding`,
-      payload,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    const extractS3Key = (url) => {
+        try {
+            const urlObj = new URL(url);
+            return urlObj.pathname.substring(1);
+        } catch (error) {
+            console.error('Error extracting S3 Key:', error);
+            return url;
+        }
+    };
 
-    const result = response.data;
-    console.log("Onboarding Successful:", result);
+    const uploadToS3 = async (fileUri, signedUrl, fileType) => {
+        try {
+            const response = await fetch(fileUri);
+            const blob = await response.blob();
 
-    if(result.token){
-        await AsyncStorage.removeItem('access_token');
-        await AsyncStorage.setItem('access_token', result.token);
-    }
+            await fetch(signedUrl, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": fileType
+                },
+                body: blob,
+            }); 
+            const cleanUrl = signedUrl.split('?')[0];
+            return cleanUrl;
+        } catch (error) {
+            console.error("Error uploading file to S3:", error);
+            Alert.alert("Upload Failed", "Could not upload file to server");
+            return null;
+        }
+    };
 
-    if (result.user) {
-        await AsyncStorage.removeItem('user_data');
-        await AsyncStorage.setItem('user_data', JSON.stringify(result.user));
-    }
+    const handleUpload = async (docType, file) => {
+        if (!file) {
+            Alert.alert(`No file selected. Please upload ${docType} first.`);
+            return;
+        }
 
-    router.replace("/agreement");
-  } catch (error) {
-    console.error(
-      "Onboarding Error",
-      error.response?.data || error.message || error
-    );
-    Alert.alert("Onboarding Failed", "Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
-};
+        try {
+            const token = await SecureStore.getItemAsync("access_token");
+            console.log("Token retrieved for upload:", !!token);
+            
+            if (!token) {
+                console.warn("Token not found in SecureStore");
+                Alert.alert(
+                    "Session Expired",
+                    "Please log in again to continue.",
+                    [
+                        {
+                            text: "Go to Login",
+                            onPress: async () => {
+                                try {
+                                    await SecureStore.deleteItemAsync('access_token');
+                                    await AsyncStorage.removeItem('user_data');
+                                    router.replace('/login');
+                                } catch (error) {
+                                    console.error("Error clearing storage:", error);
+                                }
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
 
+            const response = await axios.post(
+                `${BACKEND_URL_LOCAL}/uploadurl`,
+                {
+                    docType: file.docType,
+                    fileType: file.ext,
+                    fileName: `${Date.now()}-${docType}.${file.ext}`,
+                },
+                { 
+                    headers: { 
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    } 
+                }
+            );
+
+            if (!response.data.url) {
+                throw new Error('No signed URL received from server');
+            }
+
+            const signedUrl = response.data.url;
+            const uploadedUrl = await uploadToS3(file.uri, signedUrl, file.type);
+
+            if (uploadedUrl) {
+                console.log('File Uploaded Successfully:', uploadedUrl);
+                const s3Key = extractS3Key(uploadedUrl);
+                updateFormData(docType, s3Key);
+                console.log('S3 Key:', s3Key);
+            }
+             
+        } catch (error) {
+            console.error("Error uploading file:", error);
+            
+            if (error.response?.status === 401) {
+                Alert.alert("Error", "Your session has expired. Please log in again.");
+            } else if (error.response?.status === 400) {
+                Alert.alert("Error", "Invalid file format or request.");
+            } else {
+                Alert.alert("Error", error.response?.data?.message || "Could not upload file. Please try again.");
+            }
+        }
+    };
+
+    const submitOnboarding = async () => {
+        setIsLoading(true);
+
+        if (
+            !formData.name ||
+            !formData.address ||
+            !formData.pin ||
+            !formData.city ||
+            !formData.district ||
+            !formData.state ||
+            !formData.service_area_pin ||
+            !formData.experience ||
+            !formData.tools ||
+            !formData.aadhaar_number ||
+            !formData.plumber_license_number
+        ) {
+            Alert.alert("Error", "Please fill all required fields.");
+            setIsLoading(false);
+            return;
+        }
+
+        if (
+            !formData.aadhaar_front ||
+            !formData.aadhaar_back ||
+            !formData.license_front ||
+            !formData.license_back
+        ) {
+            Alert.alert("Error", "Please upload all the required documents.");
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const token = await SecureStore.getItemAsync("access_token");
+            const userDataString = await AsyncStorage.getItem("user_data");
+            const userData = userDataString ? JSON.parse(userDataString) : null;
+
+            if (!token) {
+                Alert.alert("Error", "Authentication token not found. Please log in again.");
+                setIsLoading(false);
+                return;
+            }
+
+            if (!userData || !userData.id || !userData.phone) {
+                Alert.alert("Error", "User data is missing. Please log in again.");
+                setIsLoading(false);
+                return;
+            }
+
+            const payload = {
+                id: userData.id,
+                phone: userData.phone,
+                name: formData.name,
+                address: formData.address,
+                pin: formData.pin,
+                city: formData.city,
+                district: formData.district,
+                state: formData.state,
+                service_area_pin: formData.service_area_pin,
+                experience: formData.experience,
+                tools: formData.tools,
+                aadhaar_number: formData.aadhaar_number,
+                plumber_license_number: formData.plumber_license_number,
+                profile: formData.profile,
+                aadhaar_front: formData.aadhaar_front,
+                aadhaar_back: formData.aadhaar_back,
+                license_front: formData.license_front,
+                license_back: formData.license_back,
+            };
+
+            const response = await axios.post(
+                `${BACKEND_URL_LOCAL}/onboarding`,
+                payload,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            const result = response.data;
+            console.log("Onboarding Successful:", result);
+
+            // CHANGED: Store token in SecureStore instead of AsyncStorage
+            if (result.token) {
+                await SecureStore.setItemAsync('access_token', result.token);
+            }
+
+            if (result.user) {
+                await AsyncStorage.setItem('user_data', JSON.stringify(result.user));
+            }
+
+            router.replace("/agreement");
+        } catch (error) {
+            console.error(
+                "Onboarding Error",
+                error.response?.data || error.message || error
+            );
+            Alert.alert("Onboarding Failed", "Please try again.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -391,7 +443,6 @@ const submitOnboarding = async () => {
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
-                {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.title}>Complete Your Profile</Text>
                     <Text style={styles.subtitle}>
@@ -400,11 +451,9 @@ const submitOnboarding = async () => {
                 </View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    {/* Personal Information */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Personal Information</Text>
 
-                        {/* Full Name */}
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Full Name *</Text>
                             <TextInput
@@ -416,7 +465,6 @@ const submitOnboarding = async () => {
                             />
                         </View>
 
-                        {/* Address */}
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Complete Address *</Text>
                             <TextInput
@@ -430,7 +478,6 @@ const submitOnboarding = async () => {
                             />
                         </View>
 
-                        {/* PIN, City, District, State */}
                         <View style={styles.row}>
                             <View style={[styles.inputGroup, styles.halfWidth]}>
                                 <Text style={styles.label}>PIN Code *</Text>
@@ -483,7 +530,6 @@ const submitOnboarding = async () => {
                         </View>
                     </View>
 
-                    {/* Professional Information */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Professional Information</Text>
 
@@ -524,7 +570,6 @@ const submitOnboarding = async () => {
                         </View>
                     </View>
 
-                    {/* KYC Documents */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>KYC Documents</Text>
 
@@ -553,11 +598,9 @@ const submitOnboarding = async () => {
                         </View>
                     </View>
 
-                    {/* Document Uploads */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Upload Documents</Text>
 
-                        {/* Profile Photo */}
                         <View style={styles.uploadSection}>
                             <Text style={styles.uploadLabel}>Profile Photo *</Text>
                             <TouchableOpacity
@@ -580,9 +623,8 @@ const submitOnboarding = async () => {
                             </TouchableOpacity>
                         </View>
 
-                        {/* Aadhaar Document */}
                         <View style={styles.uploadSection}>
-                            <Text style={styles.uploadLabel}>Aadhaar Card (Front side)*</Text>
+                            <Text style={styles.uploadLabel}>Aadhaar Card (Front side) *</Text>
                             <TouchableOpacity
                                 style={styles.uploadButton}
                                 onPress={() => pickImage('aadhaar_front')}
@@ -603,8 +645,8 @@ const submitOnboarding = async () => {
                             </TouchableOpacity>
                         </View>
 
-                                                <View style={styles.uploadSection}>
-                            <Text style={styles.uploadLabel}>Aadhaar Card (Back side)*</Text>
+                        <View style={styles.uploadSection}>
+                            <Text style={styles.uploadLabel}>Aadhaar Card (Back side) *</Text>
                             <TouchableOpacity
                                 style={styles.uploadButton}
                                 onPress={() => pickImage('aadhaar_back')}
@@ -625,9 +667,8 @@ const submitOnboarding = async () => {
                             </TouchableOpacity>
                         </View>
 
-                        {/* License Document */}
                         <View style={styles.uploadSection}>
-                            <Text style={styles.uploadLabel}>Plumber License (Front side)*</Text>
+                            <Text style={styles.uploadLabel}>Plumber License (Front side) *</Text>
                             <TouchableOpacity
                                 style={styles.uploadButton}
                                 onPress={() => pickImage('license_front')}
@@ -649,7 +690,7 @@ const submitOnboarding = async () => {
                         </View>
 
                         <View style={styles.uploadSection}>
-                            <Text style={styles.uploadLabel}>Plumber License (Back side)*</Text>
+                            <Text style={styles.uploadLabel}>Plumber License (Back side) *</Text>
                             <TouchableOpacity
                                 style={styles.uploadButton}
                                 onPress={() => pickImage('license_back')}
@@ -671,7 +712,6 @@ const submitOnboarding = async () => {
                         </View>
                     </View>
 
-                    {/* Submit Button */}
                     <TouchableOpacity
                         style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
                         onPress={submitOnboarding}

@@ -1,0 +1,107 @@
+/* Use the same styles as other stat cards */
+.stat-card {
+  display: flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  min-width: 6rem;
+  height: 6rem;
+  padding: 15px;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.icon-wrapper {
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  width: 30px;
+  height: 30px;
+  background-color: #d2e1f8;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  border: 0.3px;
+}
+
+.icon.users,
+.icon.kyc,
+.icon.orders,
+.icon.dispatch,
+.icon.installations,
+.icon.revenue-icon { 
+  color: #3b82f6; 
+}
+
+.stat-info h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.stat-info p {
+  margin: 5px 0 0 0;
+  font-size: 20px;
+  font-weight: bold;
+  color: #111;
+}
+
+.stat-card.revenue {
+  min-width: 10rem;
+  margin: 0rem;
+}
+
+
+
+/* Graph Container */
+
+.graph-card {
+  background-color: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid #e4e4e7;
+  padding: 0.5rem;
+  width: 22rem;
+  height: 17.5rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.graph-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+}
+
+.graph-icon {
+  font-size: 16px;
+  color: #3b82f6;
+}
+
+.graph-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3b82f6;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+
+.graph-title{
+    padding: 1rem;
+}

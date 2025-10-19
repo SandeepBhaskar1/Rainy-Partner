@@ -43,7 +43,7 @@ export default function SplashScreen() {
     >
       <Image
         source={require("../assets/Rainy_Filter_Logo.png")}
-        style={{ width: 200, height: 200 }}
+        style={{ width: '100%', height: '100vh' }}
       />
     </View>
   );

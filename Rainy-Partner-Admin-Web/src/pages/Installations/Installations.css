@@ -1,0 +1,364 @@
+/* Main container */
+.installations-container {
+  width: 100%;
+}
+
+.installations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.installations-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+/* Create Installation Button */
+.create-installation-btn {
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.create-installation-btn:hover {
+  background-color: #4338ca;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+/* Popup form container */
+.installation-form-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  padding: 0;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  width: 35%;
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+/* Form header */
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+}
+
+.form-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.close-btn:hover {
+  background-color: #f3f4f6;
+}
+
+/* Form styling */
+.installation-form {
+  padding: 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Two-column layout for paired fields */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Form field */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Label styling */
+.installation-form label {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6b6b6b;
+}
+
+/* Input & Select styling */
+.installation-form input,
+.installation-form select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 14px;
+  outline: none;
+  font-size: 14px;
+  color: #1f2937;
+  background-color: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.installation-form input:focus,
+.installation-form select:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.installation-form input::placeholder {
+  color: #9ca3af;
+}
+
+/* Buttons container */
+.form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 20px;
+}
+
+.cancel-btn {
+  background-color: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 14px 20px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background-color: #f9fafb;
+}
+
+.submit-btn {
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  padding: 14px 24px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.submit-btn:hover {
+  background-color: #4338ca;
+}
+
+.submit-btn:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling for modal */
+.installation-form-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.installation-form-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.installation-form-container::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 3px;
+}
+
+.installation-form-container::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+
+.installations-page {
+  width: 100%;
+}
+
+.open-installations-section {
+  margin-top: 30px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section-header svg {
+  color: #6b7280;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.loading-text,
+.error-text,
+.no-data-text {
+  text-align: center;
+  color: #9ca3af;
+  padding: 40px 0;
+  font-size: 14px;
+}
+
+.error-text {
+  color: #ef4444;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.installations-table {
+  width: 100%;
+  /* border-collapse: collapse; */
+  border: 0.3px solid rgb(230, 230, 230);
+  border-radius: 26px;
+}
+
+.installations-table thead {
+  background-color: #f9fafb;
+  border: none;
+}
+
+.installations-table th {
+  text-align: center;
+  padding: 6px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.installations-table tbody tr {
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s ease;
+  text-align: center;
+}
+
+.installations-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.installations-table td {
+  padding: 16px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.installation-id {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.customer-name {
+  color: #1f2937;
+}
+
+.location {
+  color: #6b7280;
+}
+
+.model {
+  color: #374151;
+}
+
+.created-date {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.assign-cell {
+  text-align: center;
+}
+
+.assign-btn {
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.assign-btn:hover {
+  background-color: #4338ca;
+}
+
+.assign-btn:active {
+  transform: scale(0.98);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .installation-form-container {
+    width: 90%;
+  }
+
+  .table-container {
+    overflow-x: scroll;
+  }
+
+  .installations-table {
+    min-width: 700px;
+  }
+}

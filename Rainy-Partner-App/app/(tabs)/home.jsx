@@ -30,10 +30,12 @@ export default function HomeScreen() {
   const fetchProfile = async (token) => {
     const userRawData = await AsyncStorage.getItem("user_data");
     const userData = JSON.parse(userRawData);
+    console.log(userData);
+    
 
     try {
       setLoading(true);
-      const res = await axios.get(`${BACKEND_URL}/profile/${userData.id}`, {
+      const res = await axios.get(`${BACKEND_URL}/plumber/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setProfile(res.data);

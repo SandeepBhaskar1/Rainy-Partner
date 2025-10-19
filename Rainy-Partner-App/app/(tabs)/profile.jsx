@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 export default function ProfileScreen() {
   const { user, token, logout } = useAuth();
     const [imageUrl, setImageUrl] = useState(null);
+    const [productImageUrl, setProductImageUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
 
@@ -27,14 +28,12 @@ export default function ProfileScreen() {
     queryFn: async () => {
         const response = await axios.get(`${process.env.BACKEND_URL_LOCAL}/plumber/profile`, {
         headers: {
-          'Authorization': `Bearer ${user?.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
       return response.data;
     },
   });
-
-
 
 useEffect(() => {
   if (!profile?.profile) return;
@@ -44,7 +43,7 @@ useEffect(() => {
       const response = await axios.post(
         `${BACKEND_URL}/get-image`,
         { key: profile.profile }, 
-        { headers: { Authorization: `Bearer ${user?.access_token}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setImageUrl(response.data.url);
     } catch (error) {
@@ -56,7 +55,6 @@ useEffect(() => {
 
   getProfileImage();
 }, [profile]);
-
 
   const getKycStatusInfo = (status) => {
     switch (status) {

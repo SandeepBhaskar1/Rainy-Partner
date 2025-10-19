@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    required: true
+  },
   client: {
     name: {
       type: String,
@@ -15,7 +19,11 @@ const leadSchema = new mongoose.Schema({
     address: {
       type: String,
       required: true
-    }
+    },
+    city: {type: String, required: true},
+    district: {type: String, required: true},
+    state: {type: String, required: true},
+    pincode: {type: String, required: true}
   },
   model_purchased: {
     type: String,
@@ -23,12 +31,13 @@ const leadSchema = new mongoose.Schema({
   },
   assigned_plumber_id: {
     type: String,
-    ref: 'User'
+    ref: 'User',
+    default: ""
   },
   status: {
     type: String,
-    enum: ['Assigned', 'assigned', 'under_review', 'Completed', 'Cancelled'],
-    default: 'Assigned'
+    enum: ['not-assigned', 'assigned', 'under_review', 'completed', 'cancelled'],
+    default: 'not-assigned'
   },
   lead_type: {
     type: String,
@@ -37,20 +46,21 @@ const leadSchema = new mongoose.Schema({
   },
   install_fee_charged: {
     type: Number,
-    min: 0
+    min: 0,
+    default: 0
   },
-  completion_submitted_at: Date,
-  completion_submitted_by: String,
+  completion_submitted_at: {type: Date, default: null},
+  completion_submitted_by: {type: String, default: null},
   completion_images: {
-    serial_number_url: String,
-    warranty_card_url: String,
-    installation_url: String
+    serial_number_url: {type: String, default: null},
+    warranty_card_url: {type: String, default: null},
+    installation_url: {type: String, default: null}
   },
-  approved_by: String,
-  approved_at: Date,
-  rejected_by: String,
-  rejected_at: Date,
-  rejection_reason: String,
+  approved_by: {type: String, default: null},
+  approved_at: {type: Date, default: null},
+  rejected_by: {type: String, default: null},
+  rejected_at: {type: Date, default: null},
+  rejection_reason: {type: String, default: null},
   created_at: {
     type: Date,
     default: Date.now
@@ -75,6 +85,16 @@ const leadSchema = new mongoose.Schema({
 leadSchema.pre('save', function(next) {
   if (!this.isNew) {
     this.updated_at = new Date();
+  }
+  next();
+});
+
+leadSchema.pre('validate', async function(next) {
+  if(this.isNew && !this._id) {
+    const Lead = mongoose.model('Lead', leadSchema);
+    const count = await Lead.countDocuments();
+    const nextNumber = count + 1;
+    this._id = `INST${String(nextNumber).padStart(6, '0')}`;
   }
   next();
 });
