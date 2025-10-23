@@ -18,7 +18,11 @@ const RevenueGraph = () => {
     if (!orders?.data?.length && !orders?.ordersList) return;
 
     // Use either orders.data or orders.ordersList depending on your backend response
-    const orderList = orders.data || orders.ordersList || [];
+const orderList = Array.isArray(orders)
+  ? orders
+  : orders?.data || orders?.ordersList || [];
+if (!orderList.length) return;
+
 
     const today = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000; // IST offset
@@ -52,7 +56,7 @@ const RevenueGraph = () => {
 
     const data = last7Days.map((day) => {
       const dayOrders = orderList.filter((order) => {
-        const orderDate = new Date(order.created_at);
+        const orderDate = new Date(order.createdAt);
         return orderDate >= day.start && orderDate <= day.end;
       });
 

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
-const { generateToken } = require('../middleware/auth');
+const { generateAdminToken, generateToken } = require('../middleware/auth');
 const { APIError, asyncHandler } = require('../middleware/errorHandler');
 
 const router = express.Router();
@@ -119,67 +119,122 @@ router.post('/verify-otp', [
   });
 }));
 
-// Admin login endpoint
-router.post('/admin-login', [
-  body('email').isEmail().withMessage('Please provide a valid email'),
-  body('password').notEmpty().withMessage('Password is required')
-], asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      detail: errors.array()[0].msg,
-      errors: errors.array()
-    });
-  }
 
-  const { email, password } = req.body;
-
-  // Check if it's the default admin
-  if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-    // Find admin user first by email or phone
-    let admin = await User.findOne({ 
-      $or: [
-        { email, role: 'ADMIN' },
-        { phone: '9999999999', role: 'ADMIN' }
-      ]
-    });
-    
-    if (!admin) {
-      // Check if phone is already taken by another user
-      const existingUser = await User.findOne({ phone: '9999999999' });
-      const adminPhone = existingUser ? `999999999${Date.now().toString().slice(-1)}` : '9999999999';
-      
-      admin = new User({
-        phone: adminPhone,
-        email,
-        name: 'System Admin',
-        role: 'ADMIN',
-        needs_onboarding: false,
-        kyc_status: 'approved'
+// Admin register endpoint
+router.post(
+  '/admin-register',
+  [
+    body('email').isEmail().withMessage('Please provide a valid email'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('name').optional().trim(),
+    body('phone')
+      .optional()
+      .matches(/^[6-9]\d{9}$/)
+      .withMessage('Please provide a valid 10-digit Indian phone number'),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        detail: errors.array()[0].msg,
+        errors: errors.array(),
       });
-      await admin.save();
     }
 
-    admin.last_login = new Date();
+    const { email, password, name, phone } = req.body;
+
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email, role: 'ADMIN' });
+    if (existingAdmin) {
+      return res.status(400).json({ detail: 'Admin with this email already exists' });
+    }
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // Create new admin
+    const admin = new User({
+      name: name || 'Administrator',
+      email,
+      phone: phone || '9999999999',
+      password_hash,
+      role: 'ADMIN',
+      needs_onboarding: false,
+      kyc_status: 'approved',
+    });
+
     await admin.save();
 
-    const accessToken = generateToken(admin.id);
+    // Generate token
+    const accessToken = generateToken(admin);
 
-    res.json({
-      message: 'Admin login successful',
+    res.status(201).json({
+      message: 'Admin registered successfully',
       access_token: accessToken,
       user: {
         id: admin._id,
-        email: admin.email,
         name: admin.name,
-        role: admin.role
-      }
+        email: admin.email,
+        role: admin.role,
+      },
     });
-  } else {
-    return res.status(401).json({ detail: 'Invalid admin credentials' });
-  }
-}));
+  })
+);
 
+router.post(
+  "/admin-login",
+  [
+    body("email").isEmail().withMessage("Please provide a valid email"),
+    body("password").notEmpty().withMessage("Password is required"),
+  ],
+  asyncHandler(async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          detail: errors.array()[0].msg,
+          errors: errors.array(),
+        });
+      }
+
+      const { email, password } = req.body;
+      console.log('Login attempt for:', email);
+
+      const admin = await User.findOne({ email, role: "ADMIN" });
+      if (!admin) {
+        return res.status(401).json({ detail: "Admin account not found" });
+      }
+
+      const isMatch = await bcrypt.compare(password, admin.password_hash);
+      if (!isMatch) {
+        return res.status(401).json({ detail: "Invalid email or password" });
+      }
+
+      admin.last_login = new Date();
+      await admin.save();
+
+      const accessToken = generateAdminToken(admin);
+
+      res.status(200).json({
+        success: true,
+        message: "Admin login successful",
+        token: accessToken,
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          name: admin.name,
+          role: admin.role,
+        },
+      });
+    } catch (error) {
+      console.error('❌ Login Error:', error); // This will show the real error
+      res.status(500).json({ 
+        detail: 'Internal server error',
+        error: error.message 
+      });
+    }
+  })
+);
 // Refresh token endpoint
 router.post('/refresh-token', asyncHandler(async (req, res) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');

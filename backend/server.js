@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/admin');
   const generalRoutes = require('./routes/general');
   const projectRoute = require('./routes/picture');
 const userRoute = require('./routes/userRegister')
+const kycRoutes = require('./routes/kycs');
 
 
 
@@ -63,6 +64,10 @@ app.use('/api/profile', userRoute);
 app.use('/api/plumber', plumberRoutes);
 
 app.use('/api/post-leads', leadsRoutes);
+
+app.use('/api/kyc', kycRoutes);
+
+app.use('/api/orders', require('./routes/orders'));
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {

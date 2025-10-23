@@ -70,16 +70,19 @@ const verifyPlumberToken = async (req, res, next) => {
 // Verify admin token
 const verifyAdminToken = async (req, res, next) => {
   try {
+    console.log("🛡️ verifyAdminToken middleware called"); // ✅ Add this here
+
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
     if (!token) {
       return res.status(401).json({ detail: 'Access token is missing' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    
-    const user = await User.findOne({ _id: new mongoose.Types.ObjectId(decoded.user_id), role: 'ADMIN' });
-    
+    console.log("Decoded token:", decoded); // ✅ Add this to confirm token contents
+
+    const user = await User.findOne({ _id: new mongoose.Types.ObjectId(decoded.id), role: 'ADMIN' });
+    console.log("Matched admin user:", user?.email || "Not found"); // ✅ Helpful to debug DB matching
+
     if (!user || !user.is_active) {
       return res.status(401).json({ detail: 'Invalid admin token' });
     }
@@ -87,6 +90,7 @@ const verifyAdminToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
+    console.error("Error in verifyAdminToken:", error); // ✅ Add this
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ detail: 'Invalid admin token' });
     }
@@ -96,6 +100,7 @@ const verifyAdminToken = async (req, res, next) => {
     return res.status(500).json({ detail: 'Admin token verification failed' });
   }
 };
+
 
 // Check if user is plumber
 const isPlumber = (req, res, next) => {
@@ -121,11 +126,21 @@ const generateToken = (user) => {
   );
 };
 
+const generateAdminToken = (user) => {
+  return jwt.sign(    
+    { id: user._id, role: user.role },
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+};
+
+
 module.exports = {
   verifyToken,
   verifyPlumberToken,
   verifyAdminToken,
   isPlumber,
   isAdmin,
-  generateToken
+  generateToken,
+  generateAdminToken
 };

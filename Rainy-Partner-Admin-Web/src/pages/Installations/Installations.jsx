@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { CirclePlus, X, ClipboardList, MapPin, } from "lucide-react";
+import { CirclePlus, X, ClipboardList, MapPin } from "lucide-react";
 import axios from "axios";
 import "./Installations.css";
 
 const Installations = () => {
   const [openForm, setOpenForm] = useState(false);
+  const [openAssignModal, setOpenAssignModal] = useState(false);
   const [installations, setInstallations] = useState([]);
+  const [plumbers, setPlumbers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [selectedInstallation, setSelectedInstallation] = useState(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [selectedPlumber, setSelectedPlumber] = useState("");
   const [formData, setFormData] = useState({
     customerName: "",
     contact: "",
@@ -25,9 +30,9 @@ const Installations = () => {
     (value) => value.trim() !== ""
   );
 
-  // Fetch installations on component mount
   useEffect(() => {
     fetchInstallations();
+    fetchPlumbers();
   }, []);
 
   const fetchInstallations = async () => {
@@ -39,6 +44,21 @@ const Installations = () => {
       console.error("Error fetching installations:", error);
       setError(true);
       setLoading(false);
+    }
+  };
+
+  const fetchPlumbers = async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      const response = await axios.get(`${BACKEND_URL}/admin/plumbers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const plumbersData = response.data.plumbers || response.data || [];
+      setPlumbers(plumbersData);
+      console.log(plumbersData);
+      
+    } catch (error) {
+      console.error("Error fetching plumbers:", error);
     }
   };
 
@@ -85,7 +105,6 @@ const Installations = () => {
           pincode: "",
           model: "",
         });
-        // Refresh installations list
         fetchInstallations();
       }
     } catch (error) {
@@ -96,20 +115,65 @@ const Installations = () => {
     }
   };
 
-  const handleAssign = (installationId) => {
-    console.log("Assigning installation:", installationId);
-    // Add your assign logic here
+  const handleAssign = (installation) => {
+    setSelectedInstallation(installation);
+    setSelectedPlumber("");
+    setOpenAssignModal(true);
+  };
+
+  const handleAssignInstallation = async (plumberId) => {
+    if (!plumberId) {
+      alert("Please select a plumber");
+      return;
+    }
+
+    setAssignLoading(true);
+
+    try {
+      const token = localStorage.getItem("authToken");
+      const response = await axios.put(
+        `${BACKEND_URL}/post-leads/${selectedInstallation._id}/assign`,
+        {
+          assigned_plumber_id: plumberId,
+          status: "assigned",
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.status === 200) {
+        alert("Plumber assigned successfully!");
+        setOpenAssignModal(false);
+        setSelectedInstallation(null);
+        setSelectedPlumber("");
+        fetchInstallations();
+      }
+    } catch (error) {
+      console.error("Error assigning plumber:", error);
+      alert("Failed to assign plumber. Please try again.");
+    } finally {
+      setAssignLoading(false);
+    }
   };
 
   const handleApprove = async (installationId) => {
-    if (!window.confirm("Are you sure you want to approve this installation?")) {
+    if (
+      !window.confirm("Are you sure you want to approve this installation?")
+    ) {
       return;
     }
 
     try {
-      const response = await axios.patch(
-        `${BACKEND_URL}/post-leads/${installationId}`,
-        { status: 'completed' }
+      const token = localStorage.getItem("authToken");
+      const response = await axios.put(
+        `${BACKEND_URL}/post-leads/${installationId}/status-completed`,
+        {
+          status: "completed",
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
 
       if (response.status === 200) {
@@ -120,6 +184,58 @@ const Installations = () => {
       console.error("Error approving installation:", error);
       alert("Failed to approve installation. Please try again.");
     }
+  };
+
+  const [signedUrls, setSignedUrls] = useState({});
+
+  useEffect(() => {
+    if (installations.length > 0) {
+      fetchSignedUrls();
+    }
+  }, [installations]);
+
+  const fetchSignedUrls = async () => {
+    const token = localStorage.getItem("authToken");
+    const urls = {};
+
+    for (const inst of installations) {
+      urls[inst._id] = {}; 
+
+      try {
+        const { completion_images } = inst;
+
+        if (completion_images?.serial_number_key) {
+          const res = await axios.post(
+            `${BACKEND_URL}/installations/get-image`,
+            { key: completion_images.serial_number_key },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          urls[inst._id].serial = res.data.url;
+        }
+
+        if (completion_images?.warranty_card_key) {
+          const res = await axios.post(
+            `${BACKEND_URL}/installations/get-image`,
+            { key: completion_images.warranty_card_key },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          urls[inst._id].warranty = res.data.url;
+        }
+
+        if (completion_images?.installation_key) {
+          const res = await axios.post(
+            `${BACKEND_URL}/installations/get-image`,
+            { key: completion_images.installation_key },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          urls[inst._id].installation = res.data.url;
+        }
+      } catch (err) {
+        console.error("Error fetching signed URL:", err);
+      }
+    }
+
+    setSignedUrls(urls);
   };
 
   const formatDate = (dateString) => {
@@ -138,6 +254,20 @@ const Installations = () => {
 
     const diffYears = Math.floor(diffMonths / 12);
     return diffYears === 1 ? "1 year ago" : `${diffYears} years ago`;
+  };
+
+  const getFilteredPlumbers = () => {
+    if (!selectedInstallation) return [];
+    const servicePins = plumbers.filter((plumber) => {
+      const servicePinList = Array.isArray(plumber.service_area_pin)
+        ? plumber.service_area_pin.map((p) => p.trim())
+        : [];
+      return (
+        servicePinList.includes(selectedInstallation?.client?.pincode) &&
+        plumber.kyc_status === "approved"
+      );
+    });
+    return servicePins;
   };
 
   return (
@@ -164,7 +294,8 @@ const Installations = () => {
             <p className="loading-text">Loading installations...</p>
           ) : error ? (
             <p className="error-text">Failed to load installations</p>
-          ) : installations.filter(inst => inst.status === 'not-assigned').length === 0 ? (
+          ) : installations.filter((inst) => inst.status === "not-assigned")
+              .length === 0 ? (
             <p className="no-data-text">No open installations</p>
           ) : (
             <div className="table-container">
@@ -181,28 +312,33 @@ const Installations = () => {
                 </thead>
                 <tbody>
                   {installations
-                    .filter(inst => inst.status === 'not-assigned')
+                    .filter((inst) => inst.status === "not-assigned")
                     .map((installation) => (
-                    <tr key={installation._id}>
-                      <td className="installation-id">{installation._id}</td>
-                      <td className="customer-name">{installation.client?.name}</td>
-                      <td className="location">
-                        {installation.client?.city}, {installation.client?.state}
-                      </td>
-                      <td className="model">{installation.model_purchased}</td>
-                      <td className="created-date">
-                        {formatDate(installation.created_at)}
-                      </td>
-                      <td className="assign-cell">
-                        <button
-                          className="assign-btn"
-                          onClick={() => handleAssign(installation._id)}
-                        >
-                          Assign
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                      <tr key={installation._id}>
+                        <td className="installation-id">{installation._id}</td>
+                        <td className="customer-name">
+                          {installation.client?.name}
+                        </td>
+                        <td className="location">
+                          {installation.client?.city},{" "}
+                          {installation.client?.state}
+                        </td>
+                        <td className="model">
+                          {installation.model_purchased}
+                        </td>
+                        <td className="created-date">
+                          {formatDate(installation.created_at)}
+                        </td>
+                        <td className="assign-cell">
+                          <button
+                            className="assign-btn"
+                            onClick={() => handleAssign(installation)}
+                          >
+                            Assign
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -219,7 +355,10 @@ const Installations = () => {
             <p className="loading-text">Loading installations...</p>
           ) : error ? (
             <p className="error-text">Failed to load installations</p>
-          ) : installations.filter(inst => inst.status === 'assigned' || inst.status === 'under_review').length === 0 ? (
+          ) : installations.filter(
+              (inst) =>
+                inst.status === "assigned" || inst.status === "under_review"
+            ).length === 0 ? (
             <p className="no-data-text">No installations in progress</p>
           ) : (
             <div className="table-container">
@@ -238,134 +377,212 @@ const Installations = () => {
                 </thead>
                 <tbody>
                   {installations
-                    .filter(inst => inst.status === 'assigned' || inst.status === 'under_review')
+                    .filter(
+                      (inst) =>
+                        inst.status === "assigned" ||
+                        inst.status === "under_review"
+                    )
                     .map((installation) => (
-                    <tr key={installation._id}>
-                      <td className="installation-id">{installation._id}</td>
-                      <td className="customer-name">{installation.client?.name}</td>
-                      <td className="plumber">
-                        {installation.assigned_plumber_id || 'N/A'}
-                      </td>
-                      <td className="status-badge">
-                        <span className={`badge ${installation.status === 'assigned' ? 'badge-assigned' : 'badge-review'}`}>
-                          {installation.status === 'assigned' ? 'Assigned' : 'Under Review'}
-                        </span>
-                      </td>
-                      <td className="image-link">
-                        {installation.completion_images?.serial_number_url ? (
-                          <a 
-                            href={installation.completion_images.serial_number_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="view-link"
+                      <tr key={installation._id}>
+                        <td className="installation-id">{installation._id}</td>
+                        <td className="customer-name">
+                          {installation.client?.name}
+                        </td>
+                        <td className="plumber">
+                          {installation.assigned_plumber_id || "N/A"}
+                        </td>
+                        <td className="status-badge">
+                          <span
+                            className={`badge ${
+                              installation.status === "assigned"
+                                ? "badge-assigned"
+                                : "badge-review"
+                            }`}
                           >
-                            View
-                          </a>
-                        ) : 'N/A'}
-                      </td>
-                      <td className="image-link">
-                        {installation.completion_images?.warranty_card_url ? (
-                          <a 
-                            href={installation.completion_images.warranty_card_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="view-link"
-                          >
-                            View
-                          </a>
-                        ) : 'N/A'}
-                      </td>
-                      <td className="image-link">
-                        {installation.completion_images?.installation_url ? (
-                          <a 
-                            href={installation.completion_images.installation_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="view-link"
-                          >
-                            View
-                          </a>
-                        ) : 'N/A'}
-                      </td>
-                      <td className="assign-cell">
-                        {installation.status === 'under_review' ? (
-                          <button
-                            className="assign-btn approve-btn"
-                            onClick={() => handleApprove(installation._id)}
-                          >
-                            Approve
-                          </button>
-                        ) : (
-                          <span className="waiting-text">Waiting...</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                            {installation.status === "assigned"
+                              ? "Assigned"
+                              : "Under Review"}
+                          </span>
+                        </td>
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.serial ? (
+                            <a
+                              href={signedUrls[installation._id].serial}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.warranty ? (
+                            <a
+                              href={signedUrls[installation._id].warranty}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.installation ? (
+                            <a
+                              href={signedUrls[installation._id].installation}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td className="assign-cell">
+                          {installation.status === "under_review" ? (
+                            <button
+                              className="assign-btn approve-btn"
+                              onClick={() => handleApprove(installation._id)}
+                            >
+                              Approve
+                            </button>
+                          ) : (
+                            <span className={`waiting-text ${
+    installation.status === "assigned"
+      ? "assigned"
+      : installation.status === "under_review"
+      ? "under-review"
+      : ""
+  }`}>
+                              {installation.status === 'assigned' ? 'Assigned' : installation.status === 'under_review' ? 'Under Review' : ''}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
 
-<div className="open-installations-section">
-  <div className="section-header">
-    <MapPin size={20} />
-    <h3>Installation Complete</h3>
-  </div>
+        <div className="open-installations-section">
+          <div className="section-header">
+            <MapPin size={20} />
+            <h3>Installation Complete</h3>
+          </div>
 
-  {loading ? (
-    <p className="loading-text">Loading completed installations...</p>
-  ) : error ? (
-    <p className="error-text">Failed to load installations</p>
-  ) : installations.filter(inst => inst.status === 'completed').length === 0 ? (
-    <p className="no-data-text">No completed installations</p>
-  ) : (
-    <div className="table-container">
-      <table className="installations-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Customer</th>
-            <th>Plumber</th>
-            <th>Model</th>
-            <th>Completed On</th> {/* ✅ New column */}
-          </tr>
-        </thead>
-        <tbody>
-          {installations
-            .filter(inst => inst.status === 'completed')
-            .map((installation) => (
-              <tr key={installation._id}>
-                {/* ✅ Installation ID */}
-                <td className="installation-id">{installation._id}</td>
+          {loading ? (
+            <p className="loading-text">Loading completed installations...</p>
+          ) : error ? (
+            <p className="error-text">Failed to load installations</p>
+          ) : installations.filter((inst) => inst.status === "completed")
+              .length === 0 ? (
+            <p className="no-data-text">No completed installations</p>
+          ) : (
+            <div className="table-container">
+              <table className="installations-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Customer</th>
+                    <th>Plumber</th>
+                    <th>Model</th>
+                    <th>Serial Image</th>
+                    <th>Warraty</th>
+                    <th>Installation Image</th>
+                    <th>Completed On</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {installations
+                    .filter((inst) => inst.status === "completed")
+                    .map((installation) => (
+                      <tr key={installation._id}>
+                        <td className="installation-id">{installation._id}</td>
+                        <td className="customer-name">
+                          {installation.client?.name || "N/A"}
+                        </td>
+                        <td className="plumber">
+  {installation.assigned_plumber_id || "N/A"}
+</td>
 
-                {/* ✅ Customer Name */}
-                <td className="customer-name">{installation.client?.name || 'N/A'}</td>
+                        <td className="model">
+                          {installation.model_purchased || "N/A"}
+                        </td>
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.serial ? (
+                            <a
+                              href={signedUrls[installation._id].serial}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
 
-                {/* ✅ Plumber ID or N/A */}
-                <td className="plumber">{installation.assigned_plumber_id || 'N/A'}</td>
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.warranty ? (
+                            <a
+                              href={signedUrls[installation._id].warranty}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
 
-                {/* ✅ Model Purchased */}
-                <td className="model">{installation.model_purchased || 'N/A'}</td>
-
-                {/* ✅ Completed Date formatted */}
-                <td className="completed-date">
-                  {installation.completion_submitted_at
-                    ? new Date(installation.completion_submitted_at).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })
-                    : 'N/A'}
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-    </div>
-  )}
-</div>
-
+                        <td className="image-link">
+                          {signedUrls[installation._id]?.installation ? (
+                            <a
+                              href={signedUrls[installation._id].installation}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="view-link"
+                            >
+                              View
+                            </a>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+                        <td className="completed-date">
+                          {installation.completion_submitted_at
+                            ? new Date(
+                                installation.completion_submitted_at
+                              ).toLocaleDateString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "N/A"}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         {openForm && (
           <>
@@ -373,7 +590,10 @@ const Installations = () => {
             <div className="installation-form-container">
               <div className="form-header">
                 <h3>Create Installation</h3>
-                <button className="close-btn" onClick={() => setOpenForm(false)}>
+                <button
+                  className="close-btn"
+                  onClick={() => setOpenForm(false)}
+                >
                   <X size={20} />
                 </button>
               </div>
@@ -499,6 +719,119 @@ const Installations = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </>
+        )}
+
+        {openAssignModal && selectedInstallation && (
+          <>
+            <div
+              className="assign-modal-overlay"
+              onClick={() => setOpenAssignModal(false)}
+            >
+              <div
+                className="assign-modal"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="assign-modal-header">
+                  <h3>Assign Installation {selectedInstallation._id}</h3>
+                  <button
+                    className="assign-modal-close"
+                    onClick={() => setOpenAssignModal(false)}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="assign-modal-body">
+                  <div className="assign-section">
+                    <label>Installation Address</label>
+                    <div className="installation-address-box">
+                      <p className="customer-name-text">
+                        {selectedInstallation.client?.name}
+                      </p>
+                      <p className="address-text">
+                        {selectedInstallation.client?.address},{" "}
+                        {selectedInstallation.client?.city},{" "}
+                        {selectedInstallation.client?.district} –{" "}
+                        {selectedInstallation.client?.state} –{" "}
+                        {selectedInstallation.client?.pincode}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="assign-section">
+                    <label>Choose Plumber</label>
+                    <select
+                      value={selectedPlumber}
+                      onChange={(e) => setSelectedPlumber(e.target.value)}
+                      className="assign-select"
+                    >
+                      <option value="">
+                        Select manually or use suggestions ↓
+                      </option>
+                      {plumbers
+                        .filter((p) => p.kyc_status === "approved")
+                        .map((plumber) => (
+                          <option key={plumber._id} value={plumber._id}>
+                            {plumber.name} ({plumber.phone})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="assign-section">
+                    <label>Suggested Plumbers</label>
+                    {getFilteredPlumbers().length > 0 ? (
+                      <div className="suggested-plumbers">
+                        {getFilteredPlumbers().map((plumber) => (
+                          <div className="plumber-card" key={plumber._id}>
+                            <div className="plumber-info">
+                              <h4>{plumber.name}</h4>
+                              <div className="plumber-details">
+                                <span>
+                                  {plumber.address?.city || plumber.city}
+                                </span>
+                                <span>•</span>
+                                <span>{plumber.phone}</span>
+                                <span>•</span>
+                                <span>⭐ {plumber.trust || "4.9"}</span>
+                              </div>
+                            </div>
+                            <button
+                              className="assign-card-btn"
+                              onClick={() =>
+                                handleAssignInstallation(plumber._id)
+                              }
+                              disabled={assignLoading}
+                            >
+                              {assignLoading ? "..." : "Assign"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="no-plumber">No matching plumbers found.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="assign-modal-footer">
+                  <button
+                    className="assign-cancel-btn"
+                    onClick={() => setOpenAssignModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="assign-confirm-btn"
+                    disabled={!selectedPlumber || assignLoading}
+                    onClick={() => handleAssignInstallation(selectedPlumber)}
+                  >
+                    {assignLoading ? "Assigning..." : "Assign"}
+                  </button>
+                </div>
+              </div>
             </div>
           </>
         )}

@@ -90,14 +90,22 @@ leadSchema.pre('save', function(next) {
 });
 
 leadSchema.pre('validate', async function(next) {
-  if(this.isNew && !this._id) {
+  if (this.isNew && !this._id) {
     const Lead = mongoose.model('Lead', leadSchema);
-    const count = await Lead.countDocuments();
-    const nextNumber = count + 1;
+
+    const lastLead = await Lead.findOne().sort({ _id: -1 }).lean();
+    
+    let nextNumber = 1;
+    if (lastLead && lastLead._id) {
+      const lastNum = parseInt(lastLead._id.replace('INST', ''), 10);
+      nextNumber = lastNum + 1;
+    }
+
     this._id = `INST${String(nextNumber).padStart(6, '0')}`;
   }
   next();
 });
+
 
 // Check if lead can be completed
 leadSchema.methods.canBeCompleted = function() {
@@ -111,7 +119,7 @@ leadSchema.methods.isUnderReview = function() {
 
 // Static method to find by plumber
 leadSchema.statics.findByPlumber = function(plumberId) {
-  return this.find({ assigned_plumber_id: plumberId }).sort({ created_at: -1 });
+  return this.find({ assigned_plumber_id: plumberId, }).sort({ created_at: -1 });
 };
 
 // Static method to find by status

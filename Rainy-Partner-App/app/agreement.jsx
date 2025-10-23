@@ -17,8 +17,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 export default function AgreementScreen({ navigation }) {
-  const { token, setUser, Backend_url } = useAuth();
+  const { setUser, Backend_url } = useAuth();
   const [accepted, setAccepted] = useState(false);
+
+  const token = SecureStore.getItemAsync("access_token");
 
   const handleAccept = async () => {
     if (!accepted) {

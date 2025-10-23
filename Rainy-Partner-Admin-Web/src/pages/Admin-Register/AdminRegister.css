@@ -1,0 +1,68 @@
+.admin-register-container {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  background-color: #f9fafb;
+}
+
+.admin-register-card {
+  background-color: #ffffff;
+  width: 400px;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.admin-register-card h2 {
+  text-align: center;
+  margin-bottom: 24px;
+  color: #1f2937;
+}
+
+.admin-register-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-register-card label {
+  font-weight: 500;
+  color: #374151;
+}
+
+.admin-register-card input {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  outline: none;
+  font-size: 15px;
+}
+
+.admin-register-card input:focus {
+  border-color: #4f46e5;
+}
+
+.admin-register-card button {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.admin-register-card button:hover {
+  background-color: #4338ca;
+}
+
+.message {
+  margin-top: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+.message.success {
+  color: #10b981;
+}

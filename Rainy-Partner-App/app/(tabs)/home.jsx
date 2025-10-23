@@ -78,8 +78,8 @@ export default function HomeScreen() {
       const filtered =
         res.data?.filter(
           (order) =>
-            order.status === "Pending" ||
-            order.status === "Processing" ||
+            order.status === "Order-Placed" ||
+            order.status === "Payment-Completed" ||
             order.status === "Dispatched"
         ) || [];
       setActiveOrders(filtered.length);

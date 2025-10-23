@@ -125,8 +125,8 @@ router.get('/stats', async (req, res) => {
     const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
 
     const allOrders = await Order.find()
-      .select('created_at total_amount')
-      .sort({ created_at: -1 })
+      .select('createdAt total_amount')
+      .sort({ createdAt: -1 })
       .lean();
 
     res.status(200).json({
@@ -147,7 +147,7 @@ router.get('/stats', async (req, res) => {
         openInstallations,
         unassigned: unassignedLeads
       },
-      ordersList: allOrders  // ✅ ADD THIS LINE
+      ordersList: allOrders
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -329,7 +329,7 @@ router.post('/place-order', verifyPlumberToken, [
     shipping,
     billing: billing || shipping, 
     total_amount: totalAmount,
-    status: 'Pending'
+    status: 'Order-Placed'
   });
 
   await order.save();

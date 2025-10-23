@@ -8,6 +8,8 @@ const Order = require('../models/Order');
 
 const router = express.Router();
 
+console.log("✅ Admin routes loaded");
+
 // Get dashboard statistics
 router.get('/dashboard', verifyAdminToken, asyncHandler(async (req, res) => {
   const db = mongoose.connection.db;
@@ -46,7 +48,7 @@ router.get('/dashboard', verifyAdminToken, asyncHandler(async (req, res) => {
 
 // Get all plumbers
 router.get('/plumbers', verifyAdminToken, asyncHandler(async (req, res) => {
-  const { status, page = 1, limit = 50 } = req.query;
+  const { status, page = 1, limit = 10 } = req.query;
   
   let filter = { role: 'PLUMBER' };
   if (status) {
@@ -72,6 +74,17 @@ router.get('/plumbers', verifyAdminToken, asyncHandler(async (req, res) => {
   });
 }));
 
+router.get('/plumbers/filters', verifyAdminToken, asyncHandler(async (req, res) => {
+// If your User schema has nested address object
+const states = await User.distinct("address.state", { role: "PLUMBER" });
+const districts = await User.distinct("address.district", { role: "PLUMBER" });
+const cities = await User.distinct("address.city", { role: "PLUMBER" });
+
+res.json({ states, districts, cities });
+
+}));
+
+
 // Approve/Reject KYC
 router.post('/kyc/:plumberId/:action', verifyAdminToken, asyncHandler(async (req, res) => {
   const { plumberId, action } = req.params;
@@ -95,6 +108,58 @@ router.post('/kyc/:plumberId/:action', verifyAdminToken, asyncHandler(async (req
     kyc_status: plumber.kyc_status
   });
 }));
+
+router.post(
+  '/admin-place-order',
+  verifyAdminToken,
+  [
+    body('plumber_id').notEmpty().withMessage('Plumber ID is required'), // ✅ added validation
+    body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
+    body('items.*.product').notEmpty().withMessage('Product code is required'),
+    body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+    body('items.*.price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
+    body('client.name').trim().notEmpty().withMessage('Customer name is required'),
+    body('client.phone').matches(/^[6-9]\d{9}$/).withMessage('Valid phone number is required'),
+    body('shipping.address').trim().notEmpty().withMessage('Shipping address is required'),
+    body('shipping.city').trim().notEmpty().withMessage('City is required'),
+    body('shipping.pin').matches(/^\d{6}$/).withMessage('Valid PIN code is required'),
+  ],
+  asyncHandler(async (req, res) => {
+    console.log("🟢 Admin-place-order route hit"); 
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        detail: errors.array()[0].msg,
+        errors: errors.array()
+      });
+    }
+
+    const { plumber_id, items, client, shipping, billing } = req.body;
+
+    // Calculate total amount
+    const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+
+    // Create new order
+    const order = new Order({
+      plumber_id,                  // ✅ use frontend-selected plumber
+      client,
+      items,
+      shipping,
+      billing: billing || shipping,
+      total_amount: totalAmount,
+      status: 'Pending'
+    });
+
+    await order.save();
+
+    res.json({
+      message: 'Order placed successfully!',
+      order_id: order._id,
+      total_amount: totalAmount
+    });
+  })
+);
+
 
 // Get all orders
 router.get('/orders', verifyAdminToken, asyncHandler(async (req, res) => {
@@ -135,7 +200,7 @@ router.get('/orders', verifyAdminToken, asyncHandler(async (req, res) => {
 
 // Update order status
 router.put('/orders/:orderId/status', verifyAdminToken, [
-  body('status').isIn(['Pending', 'Processing', 'Dispatched', 'Delivered', 'Fulfilled', 'Cancelled'])
+  body('status').isIn(['Order-Placed', 'Payment-Completed', 'Dispatched', 'Fulfilled', 'Cancelled'])
     .withMessage('Invalid status')
 ], asyncHandler(async (req, res) => {
   const errors = validationResult(req);
@@ -147,9 +212,9 @@ router.put('/orders/:orderId/status', verifyAdminToken, [
   }
 
   const { orderId } = req.params;
-  const { status, awb_number } = req.body;
+  const { status, awb_number, fulfilled_at } = req.body;
 
-  const order = await Order.findOne({ id: orderId });
+  const order = await Order.findOne({ _id: orderId });
   
   if (!order) {
     return res.status(404).json({ detail: 'Order not found' });
@@ -159,6 +224,11 @@ router.put('/orders/:orderId/status', verifyAdminToken, [
   if (awb_number) {
     order.awb_number = awb_number;
   }
+
+  if (order.status === 'Fulfilled' && fulfilled_at) {
+    order.fulfilled_at = new Date(fulfilled_at);
+  }
+  
   
   await order.save();
 

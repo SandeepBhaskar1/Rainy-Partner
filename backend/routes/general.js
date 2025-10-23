@@ -28,50 +28,6 @@ router.get('/products', asyncHandler(async (req, res) => {
 router.post('/products/refresh', asyncHandler(async (req, res) => {
   const db = mongoose.connection.db;
   
-  // Default products data
-  const defaultProducts = [
-    {
-      code: "FL-80",
-      name: "Rainy Filter FL-80",
-      short_desc: "Up to 80 sq ft roof area",
-      specs: "Capacity: 80 sq ft, Flow Rate: 2 LPH",
-      mrp: 6755,
-      image: "https://cdn.emergentpagetagent.com/job_plumber-connect/artifacts/vfuk0hgz_FL%2080.jpg"
-    },
-    {
-      code: "FL-150", 
-      name: "Rainy Filter FL-150",
-      short_desc: "Up to 150 sq ft roof area",
-      specs: "Capacity: 150 sq ft, Flow Rate: 4 LPH", 
-      mrp: 8166,
-      image: "https://cdn.emergentpagetagent.com/job_plumber-connect/artifacts/vfuk0hgz_FL%20150.jpg"
-    },
-    {
-      code: "FL-250",
-      name: "Rainy Filter FL-250", 
-      short_desc: "Up to 250 sq ft roof area",
-      specs: "Capacity: 250 sq ft, Flow Rate: 6 LPH",
-      mrp: 10832,
-      image: "https://cdn.emergentpagetagent.com/job_plumber-connect/artifacts/vfuk0hgz_FL%20250.jpg"
-    },
-    {
-      code: "FL-350",
-      name: "Rainy Filter FL-350",
-      short_desc: "Up to 350 sq ft roof area", 
-      specs: "Capacity: 350 sq ft, Flow Rate: 8 LPH",
-      mrp: 16319,
-      image: "https://cdn.emergentpagetagent.com/job_plumber-connect/artifacts/vfuk0hgz_FL%20350.jpg"
-    },
-    {
-      code: "FL-500",
-      name: "Rainy Filter FL-500",
-      short_desc: "Up to 500 sq ft roof area",
-      specs: "Capacity: 500 sq ft, Flow Rate: 10 LPH", 
-      mrp: 21110,
-      image: "https://cdn.emergentpagetagent.com/job_plumber-connect/artifacts/vfuk0hgz_FL%20500.jpg"
-    }
-  ];
-
   // Replace products collection
   await db.collection('products').deleteMany({});
   await db.collection('products').insertMany(defaultProducts);

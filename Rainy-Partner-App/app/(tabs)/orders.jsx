@@ -650,14 +650,14 @@ const submitOrder = async () => {
             ) : orders && orders.length > 0 ? (
               <View style={styles.ordersList}>
                 {orders?.map((order) => (
-                  <View key={order.id} style={styles.orderCard}>
+                  <View key={order._id || order.id} style={styles.orderCard}>
                     <View style={styles.orderHeader}>
                       <View>
                         <Text style={styles.orderNumber}>
-                          #{order.id ? order.id.slice(-6).toUpperCase() : ' '}
+                          #{order._id ? order._id.slice(-6).toUpperCase() : ' '}
                         </Text>
                         <Text style={styles.orderDate}>
-                          {formatDate(order.created_at)}
+                          {formatDate(order.createdAt)}
                         </Text>
                       </View>
                       <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.status) }]}>

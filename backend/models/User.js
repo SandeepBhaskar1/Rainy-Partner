@@ -99,6 +99,8 @@ userSchema.methods.getProfile = function() {
     address: this.address,
     experience: this.experience,
     tools: this.tools,
+    service_area_pin: this.service_area_pin,
+    profile: this.profile,
     photo_url: this.photo_url,
     trust: this.trust,
     needs_onboarding: this.needs_onboarding,

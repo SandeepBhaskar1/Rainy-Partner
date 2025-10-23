@@ -1,7 +1,7 @@
 const express = require('express');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, verifyAdminToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -99,39 +99,33 @@ router.post('/get-image', verifyToken, async (req, res) => {
   }
 });
 
-// router.post('/get-product-image', verifyToken, async (req, res) => {
-//   try {
-//     const { key } = req.body;
+router.post('/installations/get-image', verifyAdminToken, async (req, res) => {
+  try {
+    const { key } = req.body;
+    if (!key) return res.status(400).json({ message: "File key is required" });
 
-//     if (!key) {
-//       return res.status(400).json({ success: false, message: "Product image key is required" });
-//     }
+    const s3 = new S3Client({
+      region: process.env.AWS_REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    });
 
-//     // Clean the key (remove s3:// prefix if present)
-//     let objectKey = key.replace('s3://rainy-filter-images/', '');
-//     objectKey = objectKey.replace('s3://', '');
+    const command = new GetObjectCommand({
+      Bucket: process.env.S3_BUCKET_DOCUMENTS,
+      Key: key,
+    });
 
-//     const s3 = new S3Client({
-//       region: process.env.AWS_REGION,
-//       credentials: {
-//         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-//         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-//       },
-//     });
+    const signedUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    res.json({ success: true, url: signedUrl });
+  } catch (error) {
+    console.error("Error fetching installation image:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-//     const command = new GetObjectCommand({
-//       Bucket: process.env.S3_BUCKET_PRODUCT_IMAGES,
-//       Key: objectKey,
-//     });
 
-//     const signedUrl = await getSignedUrl(s3, command, { expiresIn: 600 });
-
-//     res.json({ success: true, url: signedUrl });
-//   } catch (error) {
-//     console.error("Error fetching product image:", error);
-//     res.status(500).json({ success: false, error: error.message });
-//   }
-// });
 
 
 module.exports = router;
