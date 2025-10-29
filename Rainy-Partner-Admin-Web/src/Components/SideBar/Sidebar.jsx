@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Users, FileText, MapPin, Package, Settings, ClipboardList } from 'lucide-react';
 import './Sidebar.css';
@@ -7,15 +7,59 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchValue, setSearchValue] = useState('');
+  
+  const userRole = useMemo(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        return parsedUser?.role;
+      } catch (error) {
+        console.error("Error parsing coordinator data:", error);
+        return null;
+      }
+    }
+    return null;
+  }, []);
 
-  const menuItems = [
+const handleLogout = () => {
+  try {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+
+    navigate('/login');
+
+    console.log('Logged out successfully');
+  } catch (error) {
+    console.error('Error occurred while logging out:', error);
+  }
+};
+
+
+  const allMenuItems = [
     { name: 'Overview', icon: ClipboardList, path: '/' },
-    { name: 'Plumbers', icon: Users, path: '/plumbers' },
-    { name: 'KYCs', icon: FileText, path: '/kycs' },
-    { name: 'Installations', icon: MapPin, path: '/installations' },
-    { name: 'Orders', icon: Package, path: '/orders' },
+    { name: 'Plumbers', icon: Users, path: '/plumbers', adminOnly: true },
+    { name: 'Plumbers', icon: Users, path: '/coordinator-plumbers', coordinatorOnly: true },
+    { name: 'Co-Ordinators', icon: Users, path: '/coordinators', adminOnly: true },
+    { name: 'KYCs', icon: FileText, path: '/kycs', adminOnly: true },
+    { name: 'Installations', icon: MapPin, path: '/admin-installations', adminOnly: true },
+    { name: 'Installations', icon: MapPin, path: '/installations', coordinatorOnly: true },
+    { name: 'Orders', icon: Package, path: '/admin-orders', adminOnly: true },
+    { name: 'CoordOrders', icon: Package, path: '/orders', coordinatorOnly: true },
     { name: 'Settings', icon: Settings, path: '/settings' }
   ];
+
+  const menuItems = useMemo(() => {
+    return allMenuItems.filter(item => {
+      if (item.adminOnly && userRole !== 'ADMIN') {
+        return false;
+      }
+      if (item.coordinatorOnly && userRole !== 'COORDINATOR') {
+        return false
+      }
+      return true;
+    });
+  }, [userRole]);
 
   const handleNavigation = (path) => {
     navigate(path);
@@ -58,6 +102,10 @@ const Sidebar = () => {
         ))}
       </nav>
 
+
+        <div className='logout-button'>
+          <button onClick={handleLogout}>Logout</button>
+        </div>
       {/* Quick Tip */}
       <div className="quick-tip">
         <div className="tip-title">Quick Tip</div>

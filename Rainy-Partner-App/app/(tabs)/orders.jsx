@@ -10,19 +10,24 @@ import {
   Alert,
   Switch,
   KeyboardAvoidingView,
+  RefreshControl,
   Platform,
+  Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuth } from '../../src/Context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { useRoute } from '@react-navigation/native';
 import KYCProtected from '../../src/Context/KYC-Page';
+import { useLanguage } from '../../context/LanguageContext';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+
 export default function OrdersScreen() {
 
 const {user, token} = useAuth();
+const { t } = useLanguage();
 
 const route = useRoute();
 const params = route.params || {};
@@ -39,6 +44,7 @@ const [activeTab, setActiveTab] = useState(
   const [orders, setOrders] = useState([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   // Customer Information
   const [customerInfo, setCustomerInfo] = useState({
@@ -79,7 +85,7 @@ const [activeTab, setActiveTab] = useState(
       setProducts(response.data);
     } catch (error) {
       console.error('Error fetching products:', error);
-      Alert.alert('Error', 'Failed to load products');
+      Alert.alert(t('common.error'), 'Failed to load products');
     } finally {
       setProductsLoading(false);
     }
@@ -87,12 +93,12 @@ const [activeTab, setActiveTab] = useState(
 
   // Fetch orders function
   const fetchOrders = async () => {
-    if (activeTab !== 'track' || !user?.access_token) return;
+    if (activeTab !== 'track' || !token) return;
     
     setOrdersLoading(true);
     try {
       const response = await axios.get(
-        `${process.env.BACKEND_URL_LOCAL}/plumber/orders`,
+        `${BACKEND_URL}/plumber/orders`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -102,7 +108,7 @@ const [activeTab, setActiveTab] = useState(
       setOrders(response.data);
     } catch (error) {
       console.error('Error fetching orders:', error);
-      Alert.alert('Error', 'Failed to load orders');
+      Alert.alert(t('common.error'), 'Failed to load orders');
     } finally {
       setOrdersLoading(false);
     }
@@ -115,7 +121,7 @@ const [activeTab, setActiveTab] = useState(
     } else if (activeTab === 'track') {
       fetchOrders();
     }
-  }, [activeTab, user?.access_token]);
+  }, [activeTab, token]);
 
   const addToCart = (productCode) => {
     setCart(prev => ({
@@ -145,39 +151,39 @@ const [activeTab, setActiveTab] = useState(
 
   const validateOrder = () => {
     if (Object.values(cart).every(quantity => quantity === 0)) {
-      Alert.alert('Error', 'Please select at least one product');
+      Alert.alert(t('common.error'), t('orders.selectAtLeastOneProduct'));
       return false;
     }
 
     if (!customerInfo.name.trim() || !customerInfo.phone.trim()) {
-      Alert.alert('Error', 'Please fill in customer name and phone');
+      Alert.alert(t('common.error'), t('orders.fillCustomerNamePhone'));
       return false;
     }
 
     if (!/^[6-9]\d{9}$/.test(customerInfo.phone)) {
-      Alert.alert('Error', 'Please enter a valid 10-digit phone number');
+      Alert.alert(t('common.error'), t('orders.validPhoneNumber'));
       return false;
     }
 
     if (!shippingAddress.address.trim() || !shippingAddress.city.trim() || !shippingAddress.pin.trim()) {
-      Alert.alert('Error', 'Please fill in complete shipping address');
+      Alert.alert(t('common.error'), t('orders.completeShippingAddress'));
       return false;
     }
 
     if (!/^\d{6}$/.test(shippingAddress.pin)) {
-      Alert.alert('Error', 'Please enter a valid 6-digit PIN code');
+      Alert.alert(t('common.error'), t('orders.validPinCode'));
       return false;
     }
 
     // Validate billing address if different from shipping
     if (!billingIsSameAsShipping) {
       if (!billingAddress.address.trim() || !billingAddress.city.trim() || !billingAddress.pin.trim()) {
-        Alert.alert('Error', 'Please fill in complete billing address');
+        Alert.alert(t('common.error'), t('orders.completeBillingAddress'));
         return false;
       }
 
       if (!/^\d{6}$/.test(billingAddress.pin)) {
-        Alert.alert('Error', 'Please enter a valid 6-digit PIN code for billing address');
+        Alert.alert(t('common.error'), t('orders.validBillingPinCode'));
         return false;
       }
     }
@@ -199,7 +205,7 @@ const submitOrder = async () => {
       });
 
     if (selectedItems.length === 0) {
-      Alert.alert('Error', 'Please add at least one product to the cart.');
+      Alert.alert(t('common.error'), t('orders.addProductToCart'));
       setIsLoading(false);
       return;
     }
@@ -226,8 +232,8 @@ const submitOrder = async () => {
     
 
     Alert.alert(
-      'Success',
-      'Order placed successfully! Admin will confirm and provide tracking details.',
+      t('common.save'),
+      t('orders.orderPlacedSuccess'),
       [{
         text: 'OK',
         onPress: () => {
@@ -244,13 +250,86 @@ const submitOrder = async () => {
 
   } catch (error) {
     console.error('Place order error:', error);
-    const errorMessage = error.response?.data?.detail || 'Failed to place order. Please try again.';
-    Alert.alert('Error', errorMessage);
+    const errorMessage = error.response?.data?.detail || t('orders.failedToPlaceOrder');
+    Alert.alert(t('common.error'), errorMessage);
   } finally {
     setIsLoading(false);
   }
 };
 
+const onRefresh = async () => {
+  setRefreshing(true);
+  try {
+    await Promise.all([
+      fetchProducts(),
+      fetchOrders()
+    ]);
+  } catch (error) {
+    console.error('Refresh error:', error);
+  } finally {
+    setRefreshing(false);
+  }
+};
+
+const handleInvoiceDownload = async (invoiceKey, orderId) => {
+  try {
+    const response = await axios.post(
+      `${BACKEND_URL}/admin/order/get-invoice-user/${orderId}`,
+      { key: invoiceKey },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const signedUrl = response.data.url;
+    const filename = invoiceKey.split('/').pop();
+    
+    // NEW: Use legacy API - still supported and stable
+    const fileUri = FileSystem.documentDirectory + filename;
+    
+    // NEW: Download using legacy downloadAsync
+    const downloadResult = await FileSystem.downloadAsync(signedUrl, fileUri);
+
+    if (downloadResult.status === 200) {
+      Alert.alert(
+        'Success',
+        'Invoice downloaded successfully!',
+        [
+          {
+            text: 'Open',
+            onPress: async () => {
+              try {
+                const canShare = await Sharing.isAvailableAsync();
+                if (canShare) {
+                  // Share the downloaded file
+                  await Sharing.shareAsync(downloadResult.uri, {
+                    mimeType: 'application/pdf',
+                    dialogTitle: 'Open Invoice',
+                    UTI: 'com.adobe.pdf'
+                  });
+                } else {
+                  Alert.alert('Error', 'Sharing is not available on this device');
+                }
+              } catch (error) {
+                console.error('Failed to open invoice:', error);
+                Alert.alert('Error', 'Failed to open invoice');
+              }
+            }
+          },
+          {
+            text: 'OK',
+            style: 'cancel'
+          }
+        ]
+      );
+    } else {
+      Alert.alert('Error', 'Failed to download invoice');
+    }
+  } catch (error) {
+    console.error('Failed to download invoice:', error);
+    Alert.alert('Error', 'Failed to download invoice. Please try again.');
+  }
+};
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -279,8 +358,8 @@ const submitOrder = async () => {
   return (
     <KYCProtected>
       <View style={styles.container} >
-        <SafeAreaView style={styles.header}>
-          <Text style={styles.title}>Order Now</Text>
+        <SafeAreaView edges={['top']} style={styles.header}>
+          <Text style={styles.title}>{t('orders.orderNow')}</Text>
         </SafeAreaView>
 
         <View style={styles.tabContainer}>
@@ -294,7 +373,7 @@ const submitOrder = async () => {
               color={activeTab === 'place' ? 'white' : '#666'} 
             />
             <Text style={[styles.tabText, activeTab === 'place' && styles.activeTabText]}>
-              Place Order
+              {t('orders.placeOrder')}
             </Text>
           </TouchableOpacity>
           
@@ -308,7 +387,7 @@ const submitOrder = async () => {
               color={activeTab === 'track' ? 'white' : '#666'} 
             />
             <Text style={[styles.tabText, activeTab === 'track' && styles.activeTabText]}>
-              Track Orders
+              {t('orders.trackOrders')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -321,7 +400,7 @@ const submitOrder = async () => {
               <Ionicons name="search" size={18} color="#999" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search filters..."
+                placeholder={t('orders.searchFilters')}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholderTextColor="#999"
@@ -329,11 +408,11 @@ const submitOrder = async () => {
             </View>
 
             {/* Products Grid - Zepto Style */}
-            <ScrollView style={styles.productsContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.productsContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} />}>
               <View style={styles.productsGrid}>
                 {productsLoading ? (
                   <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Loading products...</Text>
+                    <Text style={styles.loadingText}>{t('common.loading')}</Text>
                   </View>
                 ) : (
                   filteredProducts.map((product) => (
@@ -392,7 +471,7 @@ const submitOrder = async () => {
                               style={styles.addToCartBtn} 
                               onPress={() => addToCart(product.code)}
                             >
-                              <Text style={styles.addBtnText}>ADD</Text>
+                              <Text style={styles.addBtnText}>{t('orders.add')}</Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -412,26 +491,26 @@ const submitOrder = async () => {
                 <View style={styles.customerForm} showsVerticalScrollIndicator={false}>
                   {/* Customer Information */}
                   <View style={styles.formSection}>
-                    <Text style={styles.formSectionTitle}>Customer Information</Text>
+                    <Text style={styles.formSectionTitle}>{t('orders.customerInformation')}</Text>
                     
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Customer Name *</Text>
+                      <Text style={styles.inputLabel}>{t('orders.customerName')} *</Text>
                       <TextInput
                         style={styles.formInput}
                         value={customerInfo.name}
                         onChangeText={(text) => setCustomerInfo(prev => ({ ...prev, name: text }))}
-                        placeholder="Enter customer name"
+                        placeholder={t('orders.enterCustomerName')}
                         placeholderTextColor="#999"
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Phone Number *</Text>
+                      <Text style={styles.inputLabel}>{t('orders.phoneNumber')} *</Text>
                       <TextInput
                         style={styles.formInput}
                         value={customerInfo.phone}
                         onChangeText={(text) => setCustomerInfo(prev => ({ ...prev, phone: text }))}
-                        placeholder="Enter phone number"
+                        placeholder={t('orders.enterPhoneNumber')}
                         placeholderTextColor="#999"
                         keyboardType="phone-pad"
                         maxLength={10}
@@ -439,12 +518,12 @@ const submitOrder = async () => {
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Email (Optional)</Text>
+                      <Text style={styles.inputLabel}>{t('orders.emailOptional')}</Text>
                       <TextInput
                         style={styles.formInput}
                         value={customerInfo.email}
                         onChangeText={(text) => setCustomerInfo(prev => ({ ...prev, email: text }))}
-                        placeholder="Enter email address"
+                        placeholder={t('orders.enterEmailAddress')}
                         placeholderTextColor="#999"
                         keyboardType="email-address"
                       />
@@ -453,15 +532,15 @@ const submitOrder = async () => {
 
                   {/* Shipping Address */}
                   <View style={styles.formSection}>
-                    <Text style={styles.formSectionTitle}>Shipping Address</Text>
+                    <Text style={styles.formSectionTitle}>{t('orders.shippingAddress')}</Text>
                     
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Address *</Text>
+                      <Text style={styles.inputLabel}>{t('orders.address')} *</Text>
                       <TextInput
                         style={[styles.formInput, styles.multilineInput]}
                         value={shippingAddress.address}
                         onChangeText={(text) => setShippingAddress(prev => ({ ...prev, address: text }))}
-                        placeholder="Enter complete address"
+                        placeholder={t('orders.enterCompleteAddress')}
                         placeholderTextColor="#999"
                         multiline
                         numberOfLines={3}
@@ -470,23 +549,23 @@ const submitOrder = async () => {
 
                     <View style={styles.inputRow}>
                       <View style={styles.halfInputGroup}>
-                        <Text style={styles.inputLabel}>City *</Text>
+                        <Text style={styles.inputLabel}>{t('orders.city')} *</Text>
                         <TextInput
                           style={styles.formInput}
                           value={shippingAddress.city}
                           onChangeText={(text) => setShippingAddress(prev => ({ ...prev, city: text }))}
-                          placeholder="City"
+                          placeholder={t('orders.city')}
                           placeholderTextColor="#999"
                         />
                       </View>
 
                       <View style={styles.halfInputGroup}>
-                        <Text style={styles.inputLabel}>PIN Code *</Text>
+                        <Text style={styles.inputLabel}>{t('orders.pinCode')} *</Text>
                         <TextInput
                           style={styles.formInput}
                           value={shippingAddress.pin}
                           onChangeText={(text) => setShippingAddress(prev => ({ ...prev, pin: text }))}
-                          placeholder="PIN"
+                          placeholder={t('orders.pinCode')}
                           placeholderTextColor="#999"
                           keyboardType="numeric"
                           maxLength={6}
@@ -496,23 +575,23 @@ const submitOrder = async () => {
 
                     <View style={styles.inputRow}>
                       <View style={styles.halfInputGroup}>
-                        <Text style={styles.inputLabel}>District</Text>
+                        <Text style={styles.inputLabel}>{t('orders.district')}</Text>
                         <TextInput
                           style={styles.formInput}
                           value={shippingAddress.district}
                           onChangeText={(text) => setShippingAddress(prev => ({ ...prev, district: text }))}
-                          placeholder="District"
+                          placeholder={t('orders.district')}
                           placeholderTextColor="#999"
                         />
                       </View>
 
                       <View style={styles.halfInputGroup}>
-                        <Text style={styles.inputLabel}>State</Text>
+                        <Text style={styles.inputLabel}>{t('orders.state')}</Text>
                         <TextInput
                           style={styles.formInput}
                           value={shippingAddress.state}
                           onChangeText={(text) => setShippingAddress(prev => ({ ...prev, state: text }))}
-                          placeholder="State"
+                          placeholder={t('orders.state')}
                           placeholderTextColor="#999"
                         />
                       </View>
@@ -522,7 +601,7 @@ const submitOrder = async () => {
                   {/* Billing Address Toggle */}
                   <View style={styles.formSection}>
                     <View style={styles.toggleContainer}>
-                      <Text style={styles.toggleLabel}>Billing same as shipping</Text>
+                      <Text style={styles.toggleLabel}>{t('orders.billingSameAsShipping')}</Text>
                       <Switch
                         value={billingIsSameAsShipping}
                         onValueChange={setBillingIsSameAsShipping}
@@ -534,15 +613,15 @@ const submitOrder = async () => {
                     {/* Show Billing Address Form when toggle is off */}
                     {!billingIsSameAsShipping && (
                       <>
-                        <Text style={styles.formSectionTitle}>Billing Address</Text>
+                        <Text style={styles.formSectionTitle}>{t('orders.billingAddress')}</Text>
                         
                         <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>Address *</Text>
+                          <Text style={styles.inputLabel}>{t('orders.address')} *</Text>
                           <TextInput
                             style={[styles.formInput, styles.multilineInput]}
                             value={billingAddress.address}
                             onChangeText={(text) => setBillingAddress(prev => ({ ...prev, address: text }))}
-                            placeholder="Enter billing address"
+                            placeholder={t('orders.enterBillingAddress')}
                             placeholderTextColor="#999"
                             multiline
                             numberOfLines={3}
@@ -551,23 +630,23 @@ const submitOrder = async () => {
 
                         <View style={styles.inputRow}>
                           <View style={styles.halfInputGroup}>
-                            <Text style={styles.inputLabel}>City *</Text>
+                            <Text style={styles.inputLabel}>{t('orders.city')} *</Text>
                             <TextInput
                               style={styles.formInput}
                               value={billingAddress.city}
                               onChangeText={(text) => setBillingAddress(prev => ({ ...prev, city: text }))}
-                              placeholder="City"
+                              placeholder={t('orders.city')}
                               placeholderTextColor="#999"
                             />
                           </View>
 
                           <View style={styles.halfInputGroup}>
-                            <Text style={styles.inputLabel}>PIN Code *</Text>
+                            <Text style={styles.inputLabel}>{t('orders.pinCode')} *</Text>
                             <TextInput
                               style={styles.formInput}
                               value={billingAddress.pin}
                               onChangeText={(text) => setBillingAddress(prev => ({ ...prev, pin: text }))}
-                              placeholder="PIN"
+                              placeholder={t('orders.pinCode')}
                               placeholderTextColor="#999"
                               keyboardType="numeric"
                               maxLength={6}
@@ -577,35 +656,35 @@ const submitOrder = async () => {
 
                         <View style={styles.inputRow}>
                           <View style={styles.halfInputGroup}>
-                            <Text style={styles.inputLabel}>District</Text>
+                            <Text style={styles.inputLabel}>{t('orders.district')}</Text>
                             <TextInput
                               style={styles.formInput}
                               value={billingAddress.district}
                               onChangeText={(text) => setBillingAddress(prev => ({ ...prev, district: text }))}
-                              placeholder="District"
+                              placeholder={t('orders.district')}
                               placeholderTextColor="#999"
                             />
                           </View>
 
                           <View style={styles.halfInputGroup}>
-                            <Text style={styles.inputLabel}>State</Text>
+                            <Text style={styles.inputLabel}>{t('orders.state')}</Text>
                             <TextInput
                               style={styles.formInput}
                               value={billingAddress.state}
                               onChangeText={(text) => setBillingAddress(prev => ({ ...prev, state: text }))}
-                              placeholder="State"
+                              placeholder={t('orders.state')}
                               placeholderTextColor="#999"
                             />
                           </View>
                         </View>
 
                         <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>GSTIN (Optional)</Text>
+                          <Text style={styles.inputLabel}>{t('orders.gstinOptional')}</Text>
                           <TextInput
                             style={styles.formInput}
                             value={billingAddress.gstin}
                             onChangeText={(text) => setBillingAddress(prev => ({ ...prev, gstin: text }))}
-                            placeholder="GST Number"
+                            placeholder={t('orders.gstNumber')}
                             placeholderTextColor="#999"
                           />
                         </View>
@@ -626,11 +705,11 @@ const submitOrder = async () => {
                   disabled={isLoading}
                 >
                   {isLoading ? (
-                    <Text style={styles.placeOrderBtnText}>Placing Order...</Text>
+                    <Text style={styles.placeOrderBtnText}>{t('orders.placingOrder')}</Text>
                   ) : (
                     <>
                       <Text style={styles.placeOrderBtnText}>
-                        Place Order • ₹{getCartTotal().toLocaleString()}
+                        {t('orders.placeOrder')} • ₹{getCartTotal().toLocaleString()}
                       </Text>
                       <Ionicons name="arrow-forward" size={20} color="white" />
                     </>
@@ -642,10 +721,10 @@ const submitOrder = async () => {
           </View>
         ) : (
           /* Track Orders Content */
-          <ScrollView style={styles.trackOrderContent}>
+          <ScrollView style={styles.trackOrderContent} refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} />}>
             {ordersLoading ? (
               <View style={styles.loadingContainer}>
-                <Text style={styles.loadingText}>Loading orders...</Text>
+                <Text style={styles.loadingText}>{t('common.loading')}</Text>
               </View>
             ) : orders && orders.length > 0 ? (
               <View style={styles.ordersList}>
@@ -671,7 +750,7 @@ const submitOrder = async () => {
                     </View>
 
                     <View style={styles.orderTotal}>
-                      <Text style={styles.totalLabel}>Total: </Text>
+                      <Text style={styles.totalLabel}>{t('orders.total')}: </Text>
                       <Text style={styles.totalAmount}>₹{calculateTotal(order.items)}</Text>
                     </View>
 
@@ -679,21 +758,27 @@ const submitOrder = async () => {
                       <View style={styles.trackingInfo}>
                         <Ionicons name="cube-outline" size={16} color="#4A90E2" />
                         <Text style={styles.trackingText}>
-                          Tracking: {order.awb_number}
+                          {t('orders.tracking')}: {order.awb_number}
                         </Text>
                       </View>
                     )}
 
-                    {/* Removed Mark as Fulfilled - Admin only feature */}
+                    {order.invoiceKey && (
+                      <TouchableOpacity onPress={() => handleInvoiceDownload(order.invoiceKey, order._id || order.id)} style={styles.downloadButton}>
+                        <Ionicons name="download-outline" size={16} color="#4A90E2" />
+                        <Text style={styles.downloadText}>Download Invoice</Text>
+                      </TouchableOpacity>
+                    )}
+
                   </View>
                 ))}
               </View>
             ) : (
               <View style={styles.emptyOrders}>
                 <Ionicons name="receipt-outline" size={64} color="#E0E0E0" />
-                <Text style={styles.emptyOrdersTitle}>No Orders Yet</Text>
+                <Text style={styles.emptyOrdersTitle}>{t('orders.noOrdersYet')}</Text>
                 <Text style={styles.emptyOrdersText}>
-                  Your order history will appear here
+                  {t('orders.orderHistoryAppear')}
                 </Text>
               </View>
             )}
@@ -712,6 +797,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'white',
     paddingHorizontal: 20,
+    paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
@@ -721,7 +807,6 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
   
-  // Tab Navigation
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: 'white',
@@ -756,7 +841,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
 
-  // Place Order Content
   placeOrderContent: {
     flex: 1,
     paddingHorizontal: 16,
@@ -787,7 +871,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
 
-  // Zepto-Style Product Cards
   productCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -802,7 +885,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
 
-  // Square Product Image (Zepto Style)
   productImageContainer: {
     width: 65,
     height: 65,
@@ -823,7 +905,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F7FF',
   },
 
-  // Organized Text Container
   productTextContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -852,7 +933,6 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
 
-  // Quantity Section (Zepto Style)
   quantitySection: {
     alignItems: 'center',
   },
@@ -898,15 +978,10 @@ const styles = StyleSheet.create({
     color: '#00B761',
   },
 
-  // Cart Summary (Zepto Style)
   cartSummary: {
     position: 'absolute',
-    // bottom: 20,
-    // left: 16,
-    // right: 16,
     backgroundColor: '#00B761',
     borderRadius: 12,
-    // padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -944,7 +1019,6 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
 
-  // Track Orders Content
   trackOrderContent: {
     flex: 1,
     paddingHorizontal: 16,
@@ -1033,7 +1107,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Empty State
   emptyOrders: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1053,17 +1126,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Customer Information Form Styles
 customerSection: {
   width: '100%',
   paddingVertical: 20,
-  backgroundColor: '#FFFFFF', // full white background
+  backgroundColor: '#FFFFFF',
   borderRadius: 16
 },
 
 formSection: {
   marginBottom: 24,
-  paddingHorizontal: 16,       // consistent left-right spacing
+  paddingHorizontal: 16,
 },
 
 formSectionTitle: {
@@ -1075,14 +1147,14 @@ formSectionTitle: {
 },
 
 inputGroup: {
-  marginBottom: 20,             // equal spacing for all fields
+  marginBottom: 20,
 },
 
 inputLabel: {
   fontSize: 14,
   fontWeight: '600',
   color: '#444',
-  marginBottom: 8,              // spacing between label and input
+  marginBottom: 8,
 },
 
 formInput: {
@@ -1093,7 +1165,7 @@ formInput: {
   color: '#222',
   borderWidth: 1,
   borderColor: '#E0E0E0',
-  backgroundColor: '#FAFAFA',   // slight contrast for inputs
+  backgroundColor: '#FAFAFA',  
 },
 
 multilineInput: {
@@ -1104,7 +1176,7 @@ multilineInput: {
 inputRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
-  gap: 16,                      // consistent gap
+  gap: 16,
 },
 
 halfInputGroup: {
@@ -1159,5 +1231,21 @@ placeOrderBtnText: {
   color: '#FFFFFF',
   marginRight: 8,
 },
+
+downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F7FF',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 5
+},
+
+downloadText: {
+    fontSize: 14,
+    color: '#4A90E2',
+    marginLeft: 6,
+    fontWeight: '500',
+}
 
 });

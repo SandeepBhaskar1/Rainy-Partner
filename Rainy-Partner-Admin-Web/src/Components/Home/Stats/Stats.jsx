@@ -1,22 +1,13 @@
-import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchStats } from '../../../redux/statsSlice';
-import { Users, ClipboardList, Truck, MapPin, ListCheck, ClipboardCheck } from 'lucide-react';
+import React from 'react';
+import { useSelector } from 'react-redux';
+import { Users, ClipboardList, Truck, MapPin, ClipboardCheck } from 'lucide-react';
 import './Stats.css';
 
 const Stats = () => {
-  const dispatch = useDispatch();
-  const { plumbers, orders, leads, loading, error, hasFetched } = useSelector(
+  const { plumbers, orders, leads, error } = useSelector(
     (state) => state.stats
   );
 
-  useEffect(() => {
-    if (!hasFetched){
-      dispatch(fetchStats());
-    } 
-  }, [dispatch, hasFetched]);
-
-  if (loading) return <p>Loading stats...</p>;
   if (error) return <p>Error: {error}</p>;
 
   const statsData = [

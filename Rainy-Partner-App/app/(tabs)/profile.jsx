@@ -7,114 +7,187 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/Context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import LanguageSelector from '../languageSelector'; 
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
   const { user, token, logout } = useAuth();
-    const [imageUrl, setImageUrl] = useState(null);
-    const [productImageUrl, setProductImageUrl] = useState(null);
+  const { t, currentLanguage, languages } = useLanguage();
+  const [imageUrl, setImageUrl] = useState(null);
+  const [productImageUrl, setProductImageUrl] = useState(null);
+  const [coordinatorInfo, setCoordinatorInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const router = useRouter();
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['plumber-profile'],
     queryFn: async () => {
-        const response = await axios.get(`${process.env.BACKEND_URL_LOCAL}/plumber/profile`, {
+      const response = await axios.get(`${BACKEND_URL}/plumber/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
       return response.data;
+      
     },
   });
 
-useEffect(() => {
-  if (!profile?.profile) return;
+  const handlePrivecy = () => {
+    router.push('/privecyPolicyScreen')
+  }
 
-  const getProfileImage = async () => {
-    try {
-      const response = await axios.post(
-        `${BACKEND_URL}/get-image`,
-        { key: profile.profile }, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setImageUrl(response.data.url);
-    } catch (error) {
-      console.error("Error fetching profile image:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleTerms = () => {
+    router.push('/termsScreen')
+  }
 
-  getProfileImage();
-}, [profile]);
+  const handleContactSupport = () => {
+  const email = 'sales@rainyfilters.com';
+  const subject = 'Support Request'; 
+  const body = ''; 
+  const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  Linking.canOpenURL(mailtoUrl)
+    .then((supported) => {
+      if (supported) {
+        Linking.openURL(mailtoUrl);
+      } else {
+        alert('Unable to open mail app');
+      }
+    })
+    .catch((err) => console.error('An error occurred', err));
+};
+
+  useEffect(() => {
+    if (!profile?.profile) return;
+
+    const getProfileImage = async () => {
+      try {
+        const response = await axios.post(
+          `${BACKEND_URL}/get-image`,
+          { key: profile.profile }, 
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setImageUrl(response.data.url);
+      } catch (error) {
+        console.error("Error fetching profile image:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getProfileImage();
+  }, [profile]);
 
   const getKycStatusInfo = (status) => {
     switch (status) {
       case 'approved':
-        return { color: '#34C759', icon: 'checkmark-circle', text: 'Approved' };
+        return { color: '#34C759', icon: 'checkmark-circle', text: t('profile.kycApproved') };
       case 'rejected':
-        return { color: '#FF3B30', icon: 'close-circle', text: 'Rejected' };
+        return { color: '#FF3B30', icon: 'close-circle', text: t('profile.kycRejected') };
       default:
-        return { color: '#FF9500', icon: 'time', text: 'Pending Review' };
+        return { color: '#FF9500', icon: 'time', text: t('profile.kycPending') };
     }
   };
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      t('home.confirmLogout'),
+      t('home.areYouSure'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: async () => { logout; router.replace('/login') } },
+        { text: t('common.cancel'), style: 'cancel' },
+        { 
+          text: t('common.logout'), 
+          style: 'destructive', 
+          onPress: async () => { 
+            logout(); 
+            router.replace('/login');
+          } 
+        },
       ]
     );
   };
+useEffect(() => {
+  const fetchCoordinatorDetails = async () => {
+    const coordinatorId = profile.coordinator_id ;
+    
+    if (!coordinatorId) {
+      console.log('No coordinator_id found in profile or user');
+      return;
+    }
+    
+    try {
+      const response = await axios.get(
+        `${BACKEND_URL}/plumber/coordinator/${coordinatorId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      console.log("Coordinator details SUCCESS:", response.data);
+      setCoordinatorInfo(response.data);
+    } catch (error) {
+      console.error("Error fetching coordinator details:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
+    }
+  };
+
+  // Only run when profile is loaded
+  if (profile) {
+    fetchCoordinatorDetails();
+  }
+}, [profile?.coordinator_id, user?.coordinator_id, token, BACKEND_URL]);
+  
 
   if (isLoading || !profile) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text>Loading profile...</Text>
+          <Text>{t('common.loading')}</Text>
         </View>
       </SafeAreaView>
     );
   };
 
   const kycInfo = getKycStatusInfo(profile.kyc_status);
+  const currentLang = languages.find(lang => lang.code === currentLanguage);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <Text style={styles.title}>{t('common.profile')}</Text>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <Ionicons name="log-out-outline" size={24} color="#666" />
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
 
       <ScrollView>
         {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.profileImageContainer}>
-  {imageUrl ? (
-    <Image source={{ uri: imageUrl }} style={styles.profileImage} />
-  ) : (
-    <View style={styles.placeholderImage}>
-      <Ionicons name="person" size={40} color="#999" />
-    </View>
-  )}
-</View>
-
+            {imageUrl ? (
+              <Image source={{ uri: imageUrl }} style={styles.profileImage} />
+            ) : (
+              <View style={styles.placeholderImage}>
+                <Ionicons name="person" size={40} color="#999" />
+              </View>
+            )}
+          </View>
           
-          <Text style={styles.name}>{profile.name || 'Not provided'}</Text>
+          <Text style={styles.name}>{profile.name || t('profile.notProvided')}</Text>
           <Text style={styles.phone}>{profile.phone}</Text>
           
           <View style={[styles.kycBadge, { backgroundColor: kycInfo.color }]}>
@@ -123,26 +196,46 @@ useEffect(() => {
           </View>
         </View>
 
+        {/* Language Selector Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.preferences')}</Text>
+          
+          <TouchableOpacity
+            style={styles.languageItem}
+            onPress={() => setShowLanguageSelector(true)}
+          >
+            <View style={styles.languageLeft}>
+              <Ionicons name="language" size={20} color="#4A90E2" />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>{t('settings.language')}</Text>
+                <Text style={styles.infoValue}>{currentLang?.nativeName}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
+          </TouchableOpacity>
+        </View>
+
         {/* Personal Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
+          <Text style={styles.sectionTitle}>{t('profile.personalInfo')}</Text>
           
           <View style={styles.infoItem}>
             <Ionicons name="mail" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{profile.email || 'Not provided'}</Text>
+              <Text style={styles.infoLabel}>{t('profile.email')}</Text>
+              <Text style={styles.infoValue}>{profile.email || t('profile.notProvided')}</Text>
             </View>
           </View>
+
 
           <View style={styles.infoItem}>
             <Ionicons name="location" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Address</Text>
+              <Text style={styles.infoLabel}>{t('profile.address')}</Text>
               <Text style={styles.infoValue}>
                 {profile.address 
                   ? `${profile.address.address}, ${profile.address.city}, ${profile.address.state} - ${profile.address.pin}`
-                  : 'Not provided'
+                  : t('profile.notProvided')
                 }
               </Text>
             </View>
@@ -151,36 +244,96 @@ useEffect(() => {
           <View style={styles.infoItem}>
             <Ionicons name="time" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Experience</Text>
-              <Text style={styles.infoValue}>{profile.experience || 0} years</Text>
+              <Text style={styles.infoLabel}>{t('profile.experience')}</Text>
+              <Text style={styles.infoValue}>
+                {profile.experience || 0} {t('profile.years')}
+              </Text>
             </View>
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.coordinator')}</Text>
+    <View style={styles.infoItem}>
+    <Ionicons name="person" size={20} color="#666" />
+    <View style={styles.infoContent}>
+      <Text style={styles.name}>
+        {coordinatorInfo?.name || t('profile.notProvided')}
+      </Text>
+    </View>
+  </View>
+
+{coordinatorInfo?.phone && (
+  <TouchableOpacity 
+    style={styles.infoItem}
+    onPress={() => {
+      const phoneNumber = coordinatorInfo.phone.replace(/[^0-9]/g, '');
+      const phoneUrl = `tel:+91${phoneNumber}`;
+      
+      Linking.openURL(phoneUrl)
+        .catch((err) => {
+          console.error('Error opening dialer:', err);
+          Alert.alert('Error', 'Could not open phone dialer');
+        });
+    }}
+  >
+    <Ionicons name="call" size={20} color="#03afffff" />
+    <View style={styles.infoContent}>
+      <Text style={styles.name}>+91 {coordinatorInfo.phone}</Text>
+    </View>
+  </TouchableOpacity>
+)}
+
+{coordinatorInfo?.phone && (
+  <TouchableOpacity 
+    style={styles.infoItem}
+    onPress={() => {
+      const phoneNumber = coordinatorInfo.phone.replace(/[^0-9]/g, '');
+      const whatsappUrl = `https://wa.me/91${phoneNumber}`;
+      
+      Linking.openURL(whatsappUrl)
+        .catch((err) => {
+          console.error('Error opening WhatsApp:', err);
+          Alert.alert('Error', 'Could not open WhatsApp');
+        });
+    }}
+  >
+    <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+    <View style={styles.infoContent}>
+      <Text style={styles.name}>+91 {coordinatorInfo.phone}</Text>
+    </View>
+  </TouchableOpacity>
+)}
+        </View>
+
         {/* Professional Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Professional Information</Text>
+          <Text style={styles.sectionTitle}>{t('profile.professionalInfo')}</Text>
           
           <View style={styles.infoItem}>
             <Ionicons name="map" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Service Areas (PIN Codes)</Text>
-              <Text style={styles.infoValue}>{profile.service_area_pin || 'Not provided'}</Text>
+              <Text style={styles.infoLabel}>{t('profile.serviceAreas')}</Text>
+              <Text style={styles.infoValue}>
+                {profile.service_area_pin || t('profile.notProvided')}
+              </Text>
             </View>
           </View>
 
           <View style={styles.infoItem}>
             <Ionicons name="build" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Tools & Equipment</Text>
-              <Text style={styles.infoValue}>{profile.tools || 'Not provided'}</Text>
+              <Text style={styles.infoLabel}>{t('profile.toolsEquipment')}</Text>
+              <Text style={styles.infoValue}>
+                {profile.tools || t('profile.notProvided')}
+              </Text>
             </View>
           </View>
 
           <View style={styles.infoItem}>
             <Ionicons name="star" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Trust Score</Text>
+              <Text style={styles.infoLabel}>{t('profile.trustScore')}</Text>
               <Text style={styles.infoValue}>{profile.trust || 100}/100</Text>
             </View>
           </View>
@@ -188,16 +341,16 @@ useEffect(() => {
 
         {/* KYC Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>KYC Information</Text>
+          <Text style={styles.sectionTitle}>{t('profile.kycInfo')}</Text>
           
           <View style={styles.infoItem}>
             <Ionicons name="card" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Aadhaar Number</Text>
+              <Text style={styles.infoLabel}>{t('profile.aadhaarNumber')}</Text>
               <Text style={styles.infoValue}>
                 {profile.aadhaar_number 
                   ? `XXXX-XXXX-${profile.aadhaar_number.slice(-4)}`
-                  : 'Not provided'
+                  : t('profile.notProvided')
                 }
               </Text>
             </View>
@@ -206,9 +359,9 @@ useEffect(() => {
           <View style={styles.infoItem}>
             <Ionicons name="document" size={20} color="#666" />
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>License Number</Text>
+              <Text style={styles.infoLabel}>{t('profile.licenseNumber')}</Text>
               <Text style={styles.infoValue}>
-                {profile.plumber_license_number || 'Not provided'}
+                {profile.plumber_license_number || t('profile.notProvided')}
               </Text>
             </View>
           </View>
@@ -216,42 +369,41 @@ useEffect(() => {
 
         {/* Support Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Support</Text>
-          
-          <TouchableOpacity style={styles.supportItem}>
-            <Ionicons name="help-circle" size={20} color="#666" />
-            <Text style={styles.supportText}>Help & FAQ</Text>
-            <Ionicons name="chevron-forward" size={16} color="#999" />
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>{t('profile.support')}</Text>
 
-          <TouchableOpacity style={styles.supportItem}>
+          <TouchableOpacity style={styles.supportItem} onPress={handleContactSupport}>
             <Ionicons name="mail" size={20} color="#666" />
-            <Text style={styles.supportText}>Contact Support</Text>
+            <Text style={styles.supportText}>{t('profile.contactSupport')}</Text>
             <Ionicons name="chevron-forward" size={16} color="#999" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.supportItem}>
+          <TouchableOpacity style={styles.supportItem} onPress={handleTerms}>
             <Ionicons name="document-text" size={20} color="#666" />
-            <Text style={styles.supportText}>Terms & Conditions</Text>
+            <Text style={styles.supportText}>{t('profile.termsConditions')}</Text>
             <Ionicons name="chevron-forward" size={16} color="#999" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.supportItem}>
+          <TouchableOpacity style={styles.supportItem} onPress={handlePrivecy}>
             <Ionicons name="shield-checkmark" size={20} color="#666" />
-            <Text style={styles.supportText}>Privacy Policy</Text>
+            <Text style={styles.supportText}>{t('profile.privacyPolicy')}</Text>
             <Ionicons name="chevron-forward" size={16} color="#999" />
           </TouchableOpacity>
         </View>
 
         {/* App Information */}
         <View style={styles.appInfo}>
-          <Text style={styles.appInfoText}>Plumber Partner v1.0.0</Text>
-          <Text style={styles.appInfoText}>© 2024 Plumber Partner Platform</Text>
+          <Text style={styles.appInfoText}>{t('profile.appVersion')}</Text>
+          <Text style={styles.appInfoText}>{t('profile.copyright')}</Text>
         </View>
 
-        <View style={styles.bottomSpacer} />
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Language Selector Modal */}
+      <LanguageSelector
+        visible={showLanguageSelector}
+        onClose={() => setShowLanguageSelector(false)}
+      />
+    </View>
   );
 }
 
@@ -263,7 +415,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'white',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
     flexDirection: 'row',
@@ -343,6 +495,17 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 16,
   },
+  languageItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  languageLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -384,7 +547,8 @@ const styles = StyleSheet.create({
     color: '#999',
     marginBottom: 4,
   },
-  bottomSpacer: {
-    height: 20,
-  },
+  name: {
+    fontSize: 18,
+    paddingTop: 2
+  }
 });

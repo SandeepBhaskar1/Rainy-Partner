@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Components/Layout/Layout';
@@ -6,13 +5,18 @@ import Home from './Components/Home/Home';
 import Plumbers from './pages/Plumbers/Plumbers';
 import KYCs from './pages/KYCs/KYCs';
 import Installations from './pages/Installations/Installations';
+import InstallationForCoord from './pages/Installations/InstallationsForCoord';
 import Orders from './pages/Orders/Orders';
+import CoordOrders from './pages/Orders/CoordOrders';
 import Settings from './pages/Settings/Settings';
 import Login from './pages/Login/Login';
 import './App.css';
 import AdminRegister from './pages/Admin-Register/AdminRegister';
+import CoOrdinators from './pages/CoOrdinators/CoOrdinators';
+import CoordinatorLogin from './pages/Login/CoordinatorLogin';
+import CoordinatorPlumber from './pages/Plumbers/CoordinatorPlumber';
+import ForgotPassword from './pages/Login/ForgotPassword';
 
-// Protected Route wrapper
 const PrivateRoute = ({ children }) => {
   const token = localStorage.getItem('authToken');
   return token ? children : <Navigate to="/login" />;
@@ -22,11 +26,11 @@ const App = () => {
   return (
     <Router>
       <Routes>
-        {/* Login route (public) */}
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={<CoordinatorLogin />} />
+        <Route path="/adminLogin" element={<Login />} />
         <Route path="/admin-register" element={<AdminRegister />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
 
-        {/* Protected routes */}
         <Route
           path="/"
           element={
@@ -37,9 +41,13 @@ const App = () => {
         >
           <Route index element={<Home />} />
           <Route path="plumbers" element={<Plumbers />} />
+          <Route path="coordinator-plumbers" element={<CoordinatorPlumber />} />
+          <Route path="coordinators" element={<CoOrdinators />} />
           <Route path="kycs" element={<KYCs />} />
-          <Route path="installations" element={<Installations />} />
-          <Route path="orders" element={<Orders />} />
+          <Route path="admin-installations" element={<Installations />} />
+          <Route path="installations" element={<InstallationForCoord />} />
+          <Route path="orders" element={<CoordOrders />} />
+          <Route path="admin-orders" element={<Orders />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>

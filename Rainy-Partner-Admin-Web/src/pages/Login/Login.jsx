@@ -24,41 +24,93 @@ const Login = () => {
       if (res.data.success) {
         const { token, admin } = res.data;
         localStorage.setItem("authToken", token);
-        localStorage.setItem("admin", JSON.stringify(admin));
-        navigate("/"); 
+        localStorage.setItem("user", JSON.stringify(admin));
+        navigate("/");
       } else {
         setError("Invalid credentials");
       }
     } catch (err) {
-      setError("Login failed. Please try again.");
+      console.error(err);
+      setError(
+        err.response?.data?.message || "Login failed. Please try again."
+      );
     }
   };
 
+  const handleForgotPassword = (e) => {
+    e.preventDefault();
+    navigate('/forgot-password');
+  };
+
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <h2>Admin Login</h2>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="email"
-            placeholder="Email address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+    <div className="login-page-wrapper">
+      <div className="background-image"></div>
+      
+      <div className="background-overlay"></div>
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+      <div className="login-main-container">
+        <div className="login-grid">
+          
 
-          {error && <p className="error-text">{error}</p>}
+          {/* Right Side - Login Form with Blur Container */}
+          <div className="login-form-wrapper">
+            <div className="login-blur-container">
+            
 
-          <button type="submit">Login</button>
-        </form>
+              <div className="form-header">
+                <h2 className="form-title">Admin Login</h2>
+                <p className="form-subtitle">Enter your credentials to access the admin dashboard</p>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="error-message">
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="forgot-password">
+                  <a href="#" onClick={handleForgotPassword}>Forgot password?</a>
+                </div>
+
+                <button type="submit" className="login-button">
+                  Sign In
+                </button>
+              </form>
+
+              <div className="divider">
+                <span>Admin Access Only</span>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   );

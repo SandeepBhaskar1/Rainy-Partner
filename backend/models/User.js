@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['PLUMBER', 'ADMIN'],
+    enum: ['PLUMBER', 'ADMIN', 'COORDINATOR'],
     required: true,
     default: 'PLUMBER'
   },
@@ -39,6 +39,14 @@ const userSchema = new mongoose.Schema({
     enum: ['pending', 'approved', 'rejected'],
     default: 'pending'
   },
+  coordinator_id: {
+    type: String,
+    ref: 'User'
+  },
+  assigned_plumbers: [{
+    type: String,
+    ref: 'User'
+  }],
   address: {
     address: { type: String },
     city: { type: String },
@@ -60,6 +68,23 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 100
   },
+  working_hours: {
+    start: {
+      type: Number,
+      default: 9,
+      min: 0,
+      max: 23
+    },
+    end: {
+      type: Number,
+      default: 19,
+      min: 0,
+      max: 23
+    }
+  },
+  approvedAt: {
+    type: Date
+  },
   created_at: {
     type: Date,
     default: Date.now()
@@ -72,7 +97,9 @@ const userSchema = new mongoose.Schema({
   is_active: {
     type: Boolean,
     default: true
-  }
+  },
+  resetOtp: {type: Number},
+  otpExpiry: {type: Date}
 });
 
 userSchema.pre('save', function(next) {
@@ -87,6 +114,43 @@ userSchema.methods.needsOnboarding = function() {
   return this.needs_onboarding || this.kyc_status === 'pending';
 };
 
+
+userSchema.methods.canWorkNow = function() {
+  if (this.role !== 'COORDINATOR') {
+    return true; // Non-coordinators can work anytime
+  }
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  return currentHour >= this.working_hours.start && currentHour < this.working_hours.end;
+};
+
+// Instance method to check if user can approve KYC
+userSchema.methods.canApproveKYC = function() {
+  return this.role === 'ADMIN';
+};
+
+// Instance method to check if user can create coordinators
+userSchema.methods.canCreateCoordinator = function() {
+  return this.role === 'ADMIN';
+};
+
+// Instance method to get accessible plumbers for a user
+userSchema.methods.getAccessiblePlumbers = async function() {
+  if (this.role === 'ADMIN') {
+    // Admin can see all plumbers
+    return await mongoose.model('User').find({ role: 'PLUMBER' });
+  } else if (this.role === 'COORDINATOR') {
+    // Coordinator can only see assigned plumbers
+    return await mongoose.model('User').find({
+      _id: { $in: this.assigned_plumbers },
+      role: 'PLUMBER'
+    });
+  }
+  return [];
+};
+
 // Instance method to get user profile
 userSchema.methods.getProfile = function() {
   return {
@@ -98,14 +162,26 @@ userSchema.methods.getProfile = function() {
     kyc_status: this.kyc_status,
     address: this.address,
     experience: this.experience,
+    aadhaar_number: this.aadhaar_number,
+    aadhaar_front: this.aadhaar_front,
+    aadhaar_back: this.aadhaar_back,
+    plumber_license_number: this.plumber_license_number,
+    license_front: this.license_front,
+    license_back: this.license_back,
+    coordinator_id: this.coordinator_id,
     tools: this.tools,
     service_area_pin: this.service_area_pin,
     profile: this.profile,
     photo_url: this.photo_url,
     trust: this.trust,
     needs_onboarding: this.needs_onboarding,
-    created_at: this.created_at
+    created_at: this.created_at,
   };
+
+  if (this.role === 'COORDINATOR') {
+    profile.working_hours = this.working_hours;
+    profile.assigned_plumbers = this.assigned_plumbers;
+  }
 };
 
 // Static method to find by phone
@@ -121,6 +197,16 @@ userSchema.statics.findPlumbers = function(filter = {}) {
 // Static method to find admins only
 userSchema.statics.findAdmins = function(filter = {}) {
   return this.find({ ...filter, role: 'ADMIN' });
+};
+
+userSchema.statics.findCoordinators = function(filter = {}) {
+  return this.find({ ...filter, role: 'COORDINATOR' });
+};
+
+userSchema.statics.findAccessiblePlumbers = async function(userId) {
+  const user = await this.findById(userId);
+  if (!user) return [];
+  return await user.getAccessiblePlumbers();
 };
 
 module.exports = mongoose.model('User', userSchema);

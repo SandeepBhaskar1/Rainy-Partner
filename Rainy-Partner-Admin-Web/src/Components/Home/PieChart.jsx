@@ -1,3 +1,4 @@
+import { Loader } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -92,9 +93,9 @@ const KYCPieChart = () => {
       </h3>
 
       {loading ? (
-        <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px 0' }}>
-          Loading data...
-        </p>
+                  <div className="loading-spinner">
+              <Loader size={32} className="spinner-icon" />
+        </div>
       ) : error ? (
         <p style={{ textAlign: 'center', color: '#ef4444', padding: '20px 0' }}>
           {error}

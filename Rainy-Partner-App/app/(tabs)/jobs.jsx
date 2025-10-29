@@ -21,12 +21,15 @@ import { useAuth } from '../../src/Context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from 'expo-router';
 import KYCProtected from '../../src/Context/KYC-Page';
+import i18n from '../../i18n';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function JobsScreen() {
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState('pending');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const { t } = useLanguage();
   const [completionImages, setCompletionImages] = useState({
     serialNumber: null,
     warrantyCard: null,
@@ -119,7 +122,6 @@ export default function JobsScreen() {
     });
   }, [completionImages]);
 
-  // FIXED: Removed misplaced console.log and cleaned up dependencies
   const fetchPendingJobs = useCallback(async () => {
     if (activeTab !== 'pending') return;
     
@@ -197,17 +199,15 @@ export default function JobsScreen() {
     if (phoneNumber && phoneNumber !== 'N/A') {
       Linking.openURL(`tel:${phoneNumber}`);
     } else {
-      Alert.alert('Contact Not Available', 'Phone number not provided for this job.');
+      Alert.alert(t('jobs.contactNotAvailable'), t('jobs.contactNotAvailable'));
     }
   };
 
-  // FIXED: Enhanced openCompletionModal with better logging
   const openCompletionModal = (jobId) => {
-    console.log("Opening completion modal for Job ID:", jobId);
     
     if (!jobId) {
       console.error("ERROR: Job ID is null or undefined!");
-      Alert.alert('Error', 'Invalid job ID. Please try again.');
+      Alert.alert(t('common.error'), 'Invalid job ID. Please try again.');
       return;
     }
     
@@ -274,7 +274,7 @@ export default function JobsScreen() {
           }
         }
       },
-      { text: "Cancel", style: "cancel" }
+      { text: t('common.cancel'), style: "cancel" }
     ]);
   };
 
@@ -302,7 +302,6 @@ export default function JobsScreen() {
       docType
     };
 
-    // Set local image for immediate preview
     setCompletionImages(prev => ({
       ...prev,
       [docType]: validatedFile
@@ -311,7 +310,6 @@ export default function JobsScreen() {
     return validatedFile;
   };
 
-  // ENHANCED: Better error handling and logging
   const handleUpload = async (docType, file) => {
     if (!file) {
       Alert.alert('No File', `No file selected. Please upload ${docType} first.`);
@@ -335,7 +333,7 @@ export default function JobsScreen() {
 
       if (!signedUrl) {
         console.error('No signed URL received');
-        Alert.alert("Error", "Could not get signed URL from server");
+        Alert.alert(t('common.error'), "Could not get signed URL from server");
         return;
       }
 
@@ -351,29 +349,25 @@ export default function JobsScreen() {
             ...prev,
             [docType]: s3Key
           };
-          console.log('Updated completionImages:', updated);
           return updated;
         });
         
         await loadSignedUrl(s3Key, docType);
-        Alert.alert('Success', 'Image uploaded successfully!');
+        Alert.alert('Success', t('jobs.successUpload'));
       } else {
         console.error('Upload to S3 failed');
-        Alert.alert("Error", "Failed to upload image to S3");
+        Alert.alert(t('common.error'), "Failed to upload image to S3");
       }
     } catch (error) {
       console.error("Error in handleUpload:", error);
-      Alert.alert("Error", "Could not upload image: " + error.message);
+      Alert.alert(t('common.error'), "Could not upload image: " + error.message);
     }
   };
 
   const uploadToS3 = async (fileUri, signedUrl, fileType) => {
     try {
-      console.log('Uploading to S3:', { fileUri, signedUrl: signedUrl.substring(0, 100) + '...', fileType });
-      
       const response = await fetch(fileUri);
       const blob = await response.blob();
-      console.log('Created blob, size:', blob.size);
 
       const s3Response = await fetch(signedUrl, {
         method: "PUT",
@@ -382,15 +376,12 @@ export default function JobsScreen() {
         },
         body: blob,
       });
-
-      console.log('S3 Upload response status:', s3Response.status);
       
       if (!s3Response.ok) {
         throw new Error(`S3 upload failed with status: ${s3Response.status}`);
       }
       
       const cleanUrl = signedUrl.split('?')[0];
-      console.log('S3 Upload successful, clean URL:', cleanUrl);
       return cleanUrl;
       
     } catch (error) {
@@ -402,12 +393,10 @@ export default function JobsScreen() {
 
   // ENHANCED: Better validation and error handling
   const submitJobCompletion = async () => {
-    console.log("Selected Job ID:", selectedJobId);
-    console.log("Current completion images:", completionImages);
     
     if (!selectedJobId) {
       console.error("No job ID selected!");
-      Alert.alert('Error', 'No job selected. Please try again.');
+      Alert.alert(t('common.error'), 'No job selected. Please try again.');
       return;
     }
     
@@ -443,11 +432,8 @@ export default function JobsScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      console.log("Submission successful:", response.data);
-
-      // CORRECTION: Check for success in response data, not just status code
       if (response.status === 200 && response.data.success) {
-        Alert.alert('Success', 'Job completion submitted successfully!', [
+        Alert.alert('Success', t('jobs.successSubmission'), [
           { 
             text: 'OK', 
             onPress: () => {
@@ -463,12 +449,12 @@ export default function JobsScreen() {
           },
         ]);
       } else {
-        Alert.alert('Error', 'Failed to submit job completion');
+        Alert.alert(t('common.error'), t('jobs.errorSubmission'));
       }
     } catch (error) {
       console.error('Submission error:', error);
       console.error('Error response:', error.response?.data);
-      Alert.alert('Error', `Submission failed: ${error.response?.data?.detail || error.message}`);
+      Alert.alert(t('common.error'), `${t('jobs.errorSubmission')}: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -493,9 +479,7 @@ export default function JobsScreen() {
     }
   };
 
-  // FIXED: Moved console.log outside JSX and enhanced button click logging
   const JobCard = ({ job, isCompleted = false }) => {
-    console.log("Job Object:", job);
     
     return (
       <View style={styles.jobCard}>
@@ -527,7 +511,7 @@ export default function JobsScreen() {
         <View style={styles.clientSection}>
           <View style={styles.clientHeader}>
             <Ionicons name="person-outline" size={16} color="#4A90E2" />
-            <Text style={styles.clientHeaderText}>Client Details</Text>
+            <Text style={styles.clientHeaderText}>{t('jobs.clientDetails')}</Text>
           </View>
           <Text style={styles.clientName}>
             {job.client?.name || job.customer_name || "N/A"}
@@ -543,7 +527,7 @@ export default function JobsScreen() {
         <View style={styles.productSection}>
           <View style={styles.productHeader}>
             <Ionicons name="cube-outline" size={16} color="#00B761" />
-            <Text style={styles.productHeaderText}>Model Purchased</Text>
+            <Text style={styles.productHeaderText}>{t('jobs.modelPurchased')}</Text>
           </View>
           <Text style={styles.modelName}>
             {job.model_purchased || job.product_model || "FL-Series Filter"}
@@ -603,7 +587,7 @@ export default function JobsScreen() {
           <View style={styles.reviewInfo}>
             <Ionicons name="time" size={16} color="#5856D6" />
             <Text style={styles.reviewText}>
-              Images submitted - Awaiting admin review
+              {t('jobs.imagesSubmittedAwaiting')}
             </Text>
           </View>
         )}
@@ -612,7 +596,7 @@ export default function JobsScreen() {
           <View style={styles.completionInfo}>
             <Ionicons name="checkmark-circle" size={16} color="#34C759" />
             <Text style={styles.completionText}>
-              Completed on {formatDate(job.completion_date)}
+              {t('jobs.completedOn')} {formatDate(job.completion_date)}
             </Text>
           </View>
         )}
@@ -645,7 +629,7 @@ export default function JobsScreen() {
         
         <View style={styles.imageUploadButton}>
           <Text style={styles.imageUploadButtonText}>
-            {image ? 'Change Image' : 'Add Image'}
+            {image ? t('jobs.changeImage') : t('jobs.addImage')}
           </Text>
         </View>
       </View>
@@ -656,7 +640,7 @@ export default function JobsScreen() {
     <KYCProtected>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Installation Jobs</Text>
+          <Text style={styles.title}>{t('jobs.installationJobs')}</Text>
         </View>
 
         <View style={styles.tabContainer}>
@@ -670,7 +654,7 @@ export default function JobsScreen() {
               color={activeTab === 'pending' ? 'white' : '#666'} 
             />
             <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>
-              Pending Jobs
+              {t('jobs.pendingJobs')}
             </Text>
           </TouchableOpacity>
           
@@ -684,7 +668,7 @@ export default function JobsScreen() {
               color={activeTab === 'completed' ? 'white' : '#666'} 
             />
             <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>
-              Job Completed
+              {t('jobs.completedJobs')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -707,9 +691,9 @@ export default function JobsScreen() {
               ) : (
                 <View style={styles.emptyState}>
                   <Ionicons name="briefcase-outline" size={64} color="#E0E0E0" />
-                  <Text style={styles.emptyTitle}>No Pending Jobs</Text>
+                  <Text style={styles.emptyTitle}>{t('jobs.noPendingJobs')}</Text>
                   <Text style={styles.emptyMessage}>
-                    New installation tasks assigned by admin will appear here
+                    {t('jobs.newTasksAppearHere')}
                   </Text>
                 </View>
               )}
@@ -723,9 +707,9 @@ export default function JobsScreen() {
               ) : (
                 <View style={styles.emptyState}>
                   <Ionicons name="checkmark-done-outline" size={64} color="#E0E0E0" />
-                  <Text style={styles.emptyTitle}>No Completed Jobs</Text>
+                  <Text style={styles.emptyTitle}>{t('jobs.noCompletedJobs')}</Text>
                   <Text style={styles.emptyMessage}>
-                    Completed installation tasks will appear here
+                    {t('jobs.completedTasksAppearHere')}
                   </Text>
                 </View>
               )}
@@ -752,29 +736,29 @@ export default function JobsScreen() {
               </View>
               
               <Text style={styles.completionModalSubtitle}>
-                Upload the following images to complete this job:
+                {t('jobs.uploadImagesComplete')}
               </Text>
 
               <ScrollView style={styles.imageUploadList}>
                 <ImageUploadCard
-                  title="Filter Box Serial Number"
-                  description="Take a clear photo of the filter box showing the serial number"
+                  title={t('jobs.filterBoxSerialNumber')}
+                  description={t('jobs.takePhotoSerialNumber')}
                   type="serialNumber"
                   image={completionImages.serialNumber}
                   onPress={() => pickImage('serialNumber')}
                 />
 
                 <ImageUploadCard
-                  title="Warranty Card"
-                  description="Upload photo of the completed warranty card"
+                  title={t('jobs.warrantyCard')}
+                  description={t('jobs.uploadWarrantyCard')}
                   type="warrantyCard"
                   image={completionImages.warrantyCard}
                   onPress={() => pickImage('warrantyCard')}
                 />
 
                 <ImageUploadCard
-                  title="Installation Photo"
-                  description="Take a photo showing the completed installation"
+                  title={t('jobs.installationPhoto')}
+                  description={t('jobs.takeInstallationPhoto')}
                   type="installation"
                   image={completionImages.installation}
                   onPress={() => pickImage('installation')}
@@ -786,7 +770,7 @@ export default function JobsScreen() {
                   style={styles.cancelCompletionButton} 
                   onPress={() => setShowCompletionModal(false)}
                 >
-                  <Text style={styles.cancelCompletionButtonText}>Cancel</Text>
+                  <Text style={styles.cancelCompletionButtonText}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -798,7 +782,7 @@ export default function JobsScreen() {
                   disabled={!completionImages.serialNumber || !completionImages.warrantyCard || !completionImages.installation || isUploading}
                 >
                   <Text style={styles.submitCompletionButtonText}>
-                    {isUploading ? 'Uploading...' : 'Submit for Review'}
+                    {isUploading ? t('jobs.uploading') : t('jobs.submitForReview')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -832,7 +816,6 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
 
-  // Tab Navigation
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: 'white',
@@ -875,7 +858,6 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
 
-  // Job Card Styles
   jobCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -917,7 +899,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
 
-  // Client Section
   clientSection: {
     backgroundColor: '#F8F9FA',
     padding: 12,
@@ -952,7 +933,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Product Section
   productSection: {
     backgroundColor: '#F0FFF4',
     padding: 12,
@@ -987,7 +967,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Location Section
   locationSection: {
     marginBottom: 16,
   },
@@ -1002,7 +981,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // Action Buttons
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
@@ -1038,7 +1016,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // Review Info
   reviewInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1053,7 +1030,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // Completion Info
   completionInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1068,7 +1044,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1089,7 +1064,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Job Completion Modal
   completionModalContainer: {
     backgroundColor: 'white',
     borderRadius: 16,
@@ -1206,7 +1180,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
 
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

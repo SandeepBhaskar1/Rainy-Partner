@@ -19,6 +19,12 @@ export default function Index() {
           return;
         }
 
+        const savedLanguage = await AsyncStorage.getItem("app_language");
+        if (!savedLanguage) {
+          router.replace("/languageSelectionPage");
+          return;
+        }
+
         if (userData.needs_onboarding) {
           router.replace("/onboarding");
           return;
@@ -43,7 +49,7 @@ export default function Index() {
     if (!isLoading) {
       const timer = setTimeout(() => {
         checkUserAndRedirect();
-      }, 3000); // splash for 3s
+      }, 3000);
 
       return () => clearTimeout(timer);
     }
@@ -59,8 +65,8 @@ export default function Index() {
       }}
     >
       <Image
-        source={require("../assets/Rainy_Filter_Logo.png")}
-        style={{ width: 200, height: 200 }}
+        source={require("../assets/Rainy-Splash.png")}
+        style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
       />
     </View>
   );

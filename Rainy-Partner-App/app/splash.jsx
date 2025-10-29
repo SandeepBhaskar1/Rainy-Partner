@@ -1,15 +1,16 @@
 import React, { useEffect } from "react";
-import { Image, View } from "react-native";
+import {
+  Image,
+  StyleSheet,
+  StatusBar,
+} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 
 export default function SplashScreen() {
-
-  
   const router = useRouter();
 
   useEffect(() => {
-
     const timer = setTimeout(async () => {
       try {
         const userDataStr = await AsyncStorage.getItem("user_data");
@@ -24,7 +25,7 @@ export default function SplashScreen() {
         } else {
           router.replace("/(tabs)/home");
         }
-      } catch (error) {
+      } catch {
         router.replace("/login");
       }
     }, 3000);
@@ -33,18 +34,21 @@ export default function SplashScreen() {
   }, []);
 
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "black",
-      }}
-    >
+    <>
+      <StatusBar hidden />
       <Image
-        source={require("../assets/Rainy_Filter_Logo.png")}
-        style={{ width: '100%', height: '100vh' }}
-      />
-    </View>
+        source={require("../assets/Rainy-Filter-Logo-01.png")}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
+        {/* You can add other content here if needed */}
+      </Image>
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  backgroundImage: {
+    resizeMode: 'cover',
+  },
+});

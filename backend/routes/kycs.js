@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { verifyAdminToken } = require('../middleware/auth');
 
 router.get('/kyc-approvals', async (req, res) => {
     try {
@@ -17,6 +18,8 @@ router.get('/kyc-approvals', async (req, res) => {
                 license_front: user.license_front,
                 license_back: user.license_back,
                 status: user.kyc_status,
+                needs_onboarding: user.needs_onboarding,
+                agreement_status: user.agreement_status
             }));
         };
 
@@ -31,20 +34,38 @@ router.get('/kyc-approvals', async (req, res) => {
 });
 
 router.post('/approve', async (req, res) => {
-    const { id } = req.body;
-    try {
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        user.kyc_status = 'approved';
-        await user.save();
-        res.json({ message: 'KYC approved', id: user._id });
-    } catch (error) {
-        console.error('Error approving KYC:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }   
+  const { id, coordinator_id } = req.body;
+
+  try {
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.kyc_status = 'approved';
+    user.coordinator_id = coordinator_id;
+    user.approvedAt = new Date();
+    await user.save();
+
+    const coordinator = await User.findById(coordinator_id);
+    if (coordinator) {
+      if (!Array.isArray(coordinator.assigned_plumbers)) {
+        coordinator.assigned_plumbers = [];
+      }
+
+      if (!coordinator.assigned_plumbers.includes(user._id)) {
+        coordinator.assigned_plumbers.push(user._id);
+        await coordinator.save();
+      }
+    }
+
+    res.json({ message: 'KYC approved and plumber assigned successfully', id: user._id });
+  } catch (error) {
+    console.error('Error approving KYC:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
+
 
 router.post('/reject', async (req, res) => {
     const { id } = req.body;
@@ -62,4 +83,21 @@ router.post('/reject', async (req, res) => {
     }   
 });
 
+router.get("/:id", verifyAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const kyc = await User.findById( id );
+
+    if (!kyc) {
+      return res.status(404).json({ message: "KYC not found for this user" });
+    }
+
+    res.status(200).json(kyc);
+  } catch (error) {
+    console.error("💥 Error fetching KYC by ID:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 module.exports = router;
+

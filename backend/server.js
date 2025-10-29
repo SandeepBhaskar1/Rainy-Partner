@@ -1,112 +1,137 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const compression = require('compression');
-require('dotenv').config();
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const compression = require("compression");
+require("dotenv").config();
 
 // Import routes
-const authRoutes = require('./routes/auth');
-const plumberRoutes = require('./routes/plumber');
-const leadsRoutes = require('./routes/leads');
-const adminRoutes = require('./routes/admin');
-  const generalRoutes = require('./routes/general');
-  const projectRoute = require('./routes/picture');
-const userRoute = require('./routes/userRegister')
-const kycRoutes = require('./routes/kycs');
-
-
-
+const authRoutes = require("./routes/auth");
+const plumberRoutes = require("./routes/plumber");
+const leadsRoutes = require("./routes/leads");
+const adminRoutes = require("./routes/admin");
+const coordinatorRoute = require('./routes/coordinator');
+const generalRoutes = require("./routes/general");
+const projectRoute = require("./routes/picture");
+const userRoute = require("./routes/userRegister");
+const kycRoutes = require("./routes/kycs");
 
 // Import middleware
-const { errorHandler } = require('./middleware/errorHandler');
-const { requestLogger } = require('./middleware/logger');
+const { errorHandler } = require("./middleware/errorHandler");
+const { requestLogger } = require("./middleware/logger");
+const fileUpload = require("express-fileupload");
 
 const app = express();
-
-app.use(express.json());       
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.use(compression());
-app.use(cors({
-  origin: ['http://localhost:8081', 'exp://s14wb3g-anonymous-8081.exp.direct', 'http://localhost:5173', 'http://10.34.196.196', 'exp://10.34.196.196:8081'],
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
+app.use(
+  fileUpload({
+    limits: { fileSize: 10 * 1024 * 1024 },
+    abortOnLimit: true,
+    createParentPath: true,
+    useTempFiles: false,
+    debug: true,
+  })
+);
 
-app.get('/', (req, res) => {
-  res.send('Welcome to the Rainy Partner API');
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+app.use(compression());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:8081",
+      "exp://s14wb3g-anonymous-8081.exp.direct",
+      "http://localhost:5173",
+      "http://10.34.196.196",
+      "exp://10.34.196.196:8081",
+    ],
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
+
+app.get("/", (req, res) => {
+  res.send("Welcome to the Rainy Partner API");
 });
 
-
-app.use('/api', projectRoute);
+app.use("/api", projectRoute);
 
 // Request parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Logging middleware
-app.use(morgan('combined'));
+app.use(morgan("combined"));
 app.use(requestLogger);
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api', generalRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/coordinator", coordinatorRoute)
+app.use("/api", generalRoutes);
 
-app.use('/api/onboarding', userRoute);
-app.use('/api/profile', userRoute);
+app.use("/api/onboarding", userRoute);
+app.use("/api/profile", userRoute);
 
-app.use('/api/plumber', plumberRoutes);
+app.use("/api/plumber", plumberRoutes);
 
-app.use('/api/post-leads', leadsRoutes);
+app.use("/api/post-leads", leadsRoutes);
 
-app.use('/api/kyc', kycRoutes);
+app.use("/api/kyc", kycRoutes);
 
-app.use('/api/orders', require('./routes/orders'));
+app.use("/api/orders", require("./routes/orders"));
 
 // Health check endpoint
-app.get('/api/health', async (req, res) => {
+app.get("/api/health", async (req, res) => {
   try {
     const dbState = mongoose.connection.readyState;
-    const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
-    
+    const dbStatus = dbState === 1 ? "connected" : "disconnected";
+
     // Get database statistics
-    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collections = await mongoose.connection.db
+      .listCollections()
+      .toArray();
     const collectionsInfo = {};
-    
+
     for (const collection of collections) {
-      const count = await mongoose.connection.db.collection(collection.name).countDocuments();
+      const count = await mongoose.connection.db
+        .collection(collection.name)
+        .countDocuments();
       collectionsInfo[collection.name] = {
         documents: count,
-        status: 'connected'
+        status: "connected",
       };
     }
-    
+
     res.json({
-      status: 'healthy',
+      status: "healthy",
       timestamp: new Date().toISOString(),
       services: {
         database: dbStatus,
-        s3: 'available'
+        s3: "available",
       },
       database: {
-        type: 'MongoDB',
+        type: "MongoDB",
         name: process.env.DB_NAME,
         collections: collectionsInfo,
         total_collections: collections.length,
-        node_env: process.env.NODE_ENV
-      }
+        node_env: process.env.NODE_ENV,
+      },
     });
   } catch (error) {
     res.status(500).json({
-      status: 'unhealthy',
+      status: "unhealthy",
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 });
@@ -115,59 +140,60 @@ app.get('/api/health', async (req, res) => {
 app.use(errorHandler);
 
 // 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ 
-    message: 'Route not found',
+app.use("*", (req, res) => {
+  res.status(404).json({
+    message: "Route not found",
     path: req.originalUrl,
-    method: req.method
+    method: req.method,
   });
 });
 
 // Database connection
-mongoose.connect(process.env.MONGO_URL)
-.then(() => {
-  console.log('Connected to MongoDB');
-})
-.catch((error) => {
-  console.error('MongoDB connection error:', error);
-  process.exit(1);
-});
+mongoose
+  .connect(process.env.MONGO_URL)
+  .then(() => {
+    console.log("Connected to MongoDB");
+  })
+  .catch((error) => {
+    console.error("MongoDB connection error:", error);
+    process.exit(1);
+  });
 
 // Handle MongoDB connection events
-mongoose.connection.on('error', (error) => {
-  console.error('MongoDB error:', error);
+mongoose.connection.on("error", (error) => {
+  console.error("MongoDB error:", error);
 });
 
-mongoose.connection.on('disconnected', () => {
-  console.warn('MongoDB disconnected');
+mongoose.connection.on("disconnected", () => {
+  console.warn("MongoDB disconnected");
 });
 
-mongoose.connection.on('reconnected', () => {
-  console.log('MongoDB reconnected');
+mongoose.connection.on("reconnected", () => {
+  console.log("MongoDB reconnected");
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Shutting down server...');
+process.on("SIGINT", async () => {
+  console.log("Shutting down server...");
   try {
     await mongoose.connection.close();
-    console.log('MongoDB connection closed');
+    console.log("MongoDB connection closed");
     process.exit(0);
   } catch (error) {
-    console.error('Error during shutdown:', error);
+    console.error("Error during shutdown:", error);
     process.exit(1);
   }
 });
 
 // Start server
 const PORT = process.env.PORT || 8001;
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://192.168.1.41:${PORT}`);
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on http://192.168.1.40:${PORT}`);
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
   server.close(() => {
     process.exit(1);
   });

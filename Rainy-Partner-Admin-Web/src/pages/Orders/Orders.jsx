@@ -20,6 +20,7 @@ const Orders = () => {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -574,7 +575,7 @@ const Orders = () => {
                     .filter((order) => order.status === "Order-Placed")
                     .map((order) => (
                       <tr key={order._id || order.id}>
-                        <td className="order-id" title={order._id || order.id}>
+                        <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
                           #{order.id || order._id || "N/A"}
                         </td>
                         <td className="order-date">
@@ -689,7 +690,7 @@ const Orders = () => {
                   .filter((order) => order.status === "Payment-Completed")
                   .map((order) => (
                     <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id}>
+                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
                         #{order.id || order._id || "N/A"}
                       </td>
                       <td className="order-date">
@@ -794,102 +795,113 @@ const Orders = () => {
             </thead>
             <tbody>
               {filteredOrders.filter((order) => order.status === "Dispatched")
-                .length > 0 ? (
-                filteredOrders
-                  .filter((order) => order.status === "Dispatched")
-                  .map((order) => (
-                    <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id}>
-                        #{order.id || order._id || "N/A"}
-                      </td>
-                      <td className="order-date">
-                        {formatDate(order.created_at || order.createdAt)}
-                      </td>
-                      <td className="plumber-name">{getPlumberName(order)}</td>
-                      <td className="customer-name">
-                        {getCustomerName(order)}
-                      </td>
-                      <td className="address">{getBillingAddress(order)}</td>
-                      <td className="address">{getShippingAddress(order)}</td>
-                      <td className="product-name">
-                        {getProductNames(order.items)} x
-                        {order.items?.length || 0}
-                      </td>
-                      <td className="amount">
-                        ₹
-                        {calculateOrderTotal(order.items).toLocaleString(
-                          "en-IN"
-                        )}
-                      </td>
-                      <td>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          <input
-                            type="text"
-                            value={order.awb_number || ""}
-                            placeholder="Enter AWB Number"
-                            className="awb-input"
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              // update locally
-                              setOrders((prevOrders) =>
-                                prevOrders.map((o) =>
-                                  o._id === order._id
-                                    ? { ...o, awb_number: value }
-                                    : o
-                                )
-                              );
-                            }}
-                          />
+          .length > 0 ? (
+          filteredOrders
+            .filter((order) => order.status === "Dispatched")
+            .map((order) => (
+              <tr key={order._id || order.id}>
+                <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                  #{order.id || order._id || "N/A"}
+                </td>
+                <td className="order-date">
+                  {formatDate(order.created_at || order.createdAt)}
+                </td>
+                <td className="plumber-name">{getPlumberName(order)}</td>
+                <td className="customer-name">
+                  {getCustomerName(order)}
+                </td>
+                <td className="address">{getBillingAddress(order)}</td>
+                <td className="address">{getShippingAddress(order)}</td>
+                <td className="product-name">
+                  {getProductNames(order.items)} x
+                  {order.items?.length || 0}
+                </td>
+                <td className="amount">
+                  ₹
+                  {calculateOrderTotal(order.items).toLocaleString(
+                    "en-IN"
+                  )}
+                </td>
+                <td>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <input
+                      type="text"
+                      value={order.awb_number || ""}
+                      placeholder="Enter AWB Number"
+                      className="awb-input"
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // update locally and mark as changed
+                        setOrders((prevOrders) =>
+                          prevOrders.map((o) =>
+                            o._id === order._id
+                              ? { ...o, awb_number: value, awb_changed: true }
+                              : o
+                          )
+                        );
+                      }}
+                    />
 
-                          <button
-                            className="save-awb-btn"
-                            onClick={async () => {
-                              const awbNumber = order.awb_number?.trim();
-                              if (!awbNumber) {
-                                alert(
-                                  "Please enter an AWB number before saving."
-                                );
-                                return;
+                    {/* Show Save button only if AWB number changed */}
+                    {order.awb_changed && (
+                      <button
+                        className="save-awb-btn"
+                        onClick={async () => {
+                          const awbNumber = order.awb_number?.trim();
+                          if (!awbNumber) {
+                            alert(
+                              "Please enter an AWB number before saving."
+                            );
+                            return;
+                          }
+
+                          try {
+                            const token = localStorage.getItem("authToken");
+                            await axios.put(
+                              `${backendUrl}/admin/orders/${order._id}/status`,
+                              {
+                                awb_number: awbNumber,
+                                status: order.status,
+                              },
+                              {
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
                               }
+                            );
 
-                              try {
-                                const token = localStorage.getItem("authToken");
-                                await axios.put(
-                                  `${backendUrl}/admin/orders/${order._id}/status`,
-                                  {
-                                    awb_number: awbNumber,
-                                    status: order.status,
-                                  },
-                                  {
-                                    headers: {
-                                      Authorization: `Bearer ${token}`,
-                                    },
-                                  }
-                                );
-
-                                alert("AWB number saved successfully ✅");
-                              } catch (err) {
-                                console.error(
-                                  "Failed to update AWB number:",
-                                  err
-                                );
-                                alert(
-                                  "Failed to update AWB number. Try again."
-                                );
-                              }
-                            }}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </td>
-
+                            alert("AWB number saved successfully ✅");
+                            
+                            // Mark as saved (remove changed flag)
+                            setOrders((prevOrders) =>
+                              prevOrders.map((o) =>
+                                o._id === order._id
+                                  ? { ...o, awb_changed: false }
+                                  : o
+                              )
+                            );
+                          } catch (err) {
+                            console.error(
+                              "Failed to update AWB number:",
+                              err
+                            );
+                            alert(
+                              "Failed to update AWB number. Try again."
+                            );
+                          }
+                        }}
+                      >
+                        Save
+                      </button>
+                    )}
+                  </div>
+                </td>
                       <td>
                         <button
                           onClick={async () => {
@@ -975,7 +987,77 @@ const Orders = () => {
                   .filter((order) => order.status === "Fulfilled")
                   .map((order) => (
                     <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id}>
+                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                        #{order.id || order._id || "N/A"}
+                      </td>
+                      <td className="order-date">
+                        {formatDate(order.created_at || order.createdAt)}
+                      </td>
+                      <td className="plumber-name">{getPlumberName(order)}</td>
+                      <td className="customer-name">
+                        {getCustomerName(order)}
+                      </td>
+                      <td className="address">{getBillingAddress(order)}</td>
+                      <td className="address">{getShippingAddress(order)}</td>
+                      <td className="product-name">
+                        {getProductNames(order.items)} x
+                        {order.items?.length || 0}
+                      </td>
+                      <td className="amount">
+                        ₹
+                        {calculateOrderTotal(order.items).toLocaleString(
+                          "en-IN"
+                        )}
+                      </td>
+
+                      <td>
+                        {formatDate(order.fulfilled_at || order.fulfilledAt)}
+                      </td>
+                    </tr>
+                  ))
+              ) : (
+                <tr>
+                  <td colSpan="9" style={{ textAlign: "center" }}>
+                    No Orders Found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+
+       <div className="orders-section" style={{ marginTop: "20px" }}>
+        <div className="section-header">
+          <CircleCheckBig size={20} />
+          <h3>Cancelled Orders</h3>
+        </div>
+
+        <div className="table-container">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Date</th>
+                <th>Plumber</th>
+                <th>Client</th>
+                <th>Billing</th>
+                <th>Shipping</th>
+                <th>Item</th>
+                <th>Total</th>
+                <th>Cancelled On</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOrders.filter((order) => order.status === "Cancelled")
+                .length > 0 ? (
+                filteredOrders
+                  .filter((order) => order.status === "Cancelled")
+                  .map((order) => (
+                    <tr key={order._id || order.id}>
+                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
                         #{order.id || order._id || "N/A"}
                       </td>
                       <td className="order-date">
@@ -1047,7 +1129,7 @@ const Orders = () => {
                       required
                     >
                       <option value="">Select Plumber</option>
-                      {plumbers.map((plumber) => (
+                      {plumbers.filter((plumber) => plumber.kyc_status === 'approved').map((plumber) => (
                         <option
                           key={plumber._id || plumber.id}
                           value={plumber._id || plumber.id}
@@ -1278,6 +1360,238 @@ const Orders = () => {
           </div>
         </div>
       )}
+
+{selectedOrder && (
+  <div
+    className="modal-overlay"
+    onClick={() => setSelectedOrder(null)}
+  >
+    <div
+      className="order-details-modal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Header with Gradient */}
+      <div className="order-modal-header">
+        <h3>Order Details</h3>
+        <button
+          className="modal-close-btn"
+          onClick={() => setSelectedOrder(null)}
+        >
+          <X size={24} />
+        </button>
+      </div>
+
+      <div className="order-modal-body">
+        {/* Order ID and Status Badge */}
+        <div className="order-top-section">
+          <div className="order-id-badge">
+            <span className="label">Order ID</span>
+            <span className="value">#{selectedOrder.id || selectedOrder._id}</span>
+          </div>
+          <div className={`status-badge-large status-${selectedOrder.status?.toLowerCase().replace('-', '_')}`}>
+            <span className="status-dot"></span>
+            {selectedOrder.status}
+          </div>
+        </div>
+
+        {/* Customer and Plumber Info Cards */}
+        <div className="info-cards-row">
+          <div className="info-card customer-card">
+            <div className="icon-circle customer-icon">👤</div>
+            <div className="info-content">
+              <span className="info-label">Customer</span>
+              <span className="info-name">{getCustomerName(selectedOrder)}</span>
+              <span className="info-detail">{selectedOrder.client?.phone || 'N/A'}</span>
+            </div>
+          </div>
+          <div className="info-card plumber-card">
+            <div className="icon-circle plumber-icon">🔧</div>
+            <div className="info-content-01">
+              <span className="info-label">Plumber</span>
+              <span className="info-name">{getPlumberName(selectedOrder)}</span>
+              <span className="info-detail">{selectedOrder.plumber?.phone || 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Addresses Section */}
+        <div className="addresses-row">
+          <div className="address-card billing-card">
+            <div className="address-header">📍 Billing Address</div>
+            <div className="address-content">
+              {getBillingAddress(selectedOrder)}
+            </div>
+          </div>
+          <div className="address-card shipping-card">
+            <div className="address-header">🚚 Shipping Address</div>
+            <div className="address-content">
+              {getShippingAddress(selectedOrder)}
+            </div>
+          </div>
+        </div>
+
+        {/* Order Items Section */}
+        <div className="items-section">
+          <h4 className="section-title">Order Items</h4>
+          {selectedOrder.items?.map((item, index) => (
+            <div key={index} className="order-item-card">
+              <div className="item-icon">📦</div>
+              <div className="item-details">
+                <span className="item-name">{getProductNameById(item.product)}</span>
+                <span className="item-quantity">Quantity: {item.quantity} × ₹{item.price?.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="item-price">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tracking Info - Only show for Dispatched or Fulfilled status */}
+        {(selectedOrder.status === 'Dispatched' || selectedOrder.status === 'Fulfilled') && selectedOrder.awb_number && (
+          <div className="tracking-card">
+            <div className="tracking-label">📍 Tracking Number</div>
+            <div className="tracking-number">{selectedOrder.awb_number}</div>
+          </div>
+        )}
+
+        {/* Invoice Upload Section - Only show for Dispatched status */}
+        {selectedOrder.status === 'Dispatched' && (
+          <div className="invoice-upload-section">
+            <h4 className="section-title">Invoice</h4>
+            {selectedOrder.invoiceKey ? (
+              <div className="invoice-card">
+                <div className="invoice-info">
+                  <span className="invoice-icon">📄</span>
+                  <span className="invoice-text">Invoice uploaded</span>
+                </div>
+                <button
+                  className="btn-download-invoice"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem("authToken");
+                      const response = await axios.post(
+                        `${backendUrl}/admin/order/get-invoice/${selectedOrder._id}`,
+                        { key: selectedOrder.invoiceKey },
+                        {
+                          headers: { Authorization: `Bearer ${token}` },
+                        }
+                      );
+                      window.open(response.data.url, '_blank');
+                    } catch (err) {
+                      console.error('Failed to download invoice:', err);
+                      alert('Failed to download invoice. Try again.');
+                    }
+                  }}
+                >
+                  Download Invoice
+                </button>
+              </div>
+            ) : (
+              <div className="invoice-upload-card">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  id={`modal-invoice-${selectedOrder._id}`}
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    if (file.type !== 'application/pdf') {
+                      alert('Only PDF files are allowed');
+                      return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                      alert('File size exceeds 5MB limit');
+                      return;
+                    }
+
+                    
+
+                    try {
+
+                      const token = localStorage.getItem("authToken");
+    console.log("Token:", token ? "exists" : "missing");
+    
+    if (!token) {
+      alert("Authentication required. Please login again.");
+      return;
+    }
+
+                      const formData = new FormData();
+                      formData.append('invoice', file);
+                      formData.append('docType', 'invoice');
+                      formData.append('fileType', 'pdf');
+
+                      const response = await axios.post(
+                        `${backendUrl}/admin/order/upload-invoice/${selectedOrder._id}`,
+                        formData,
+                        {
+                          headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'multipart/form-data',
+                          },
+                        }
+                      );
+
+                      alert('Invoice uploaded successfully ✅');
+                      
+                      // Update selected order
+                      setSelectedOrder({
+                        ...selectedOrder,
+                        invoiceKey: response.data.data.invoiceKey
+                      });
+
+                      // Update orders list
+                      setOrders((prevOrders) =>
+                        prevOrders.map((o) =>
+                          o._id === selectedOrder._id
+                            ? { ...o, invoiceKey: response.data.data.invoiceKey }
+                            : o
+                        )
+                      );
+
+                      e.target.value = '';
+                    } catch (err) {
+                      console.error('Failed to upload invoice:', err);
+                      alert(err.response?.data?.message || 'Failed to upload invoice. Try again.');
+                    }
+                  }}
+                />
+                <label
+                  htmlFor={`modal-invoice-${selectedOrder._id}`}
+                  className="btn-upload-invoice"
+                >
+                  <span>📤</span> Upload Invoice (PDF)
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Dates Section */}
+        <div className="dates-row">
+          <div className="date-card order-date-card">
+            <span className="date-label">Order Date</span>
+            <span className="date-value">{formatDate(selectedOrder.created_at || selectedOrder.createdAt)}</span>
+          </div>
+          {selectedOrder.fulfilled_at && (
+            <div className="date-card fulfilled-date-card">
+              <span className="date-label">Fulfilled On</span>
+              <span className="date-value">{formatDate(selectedOrder.fulfilled_at || selectedOrder.fulfilledAt)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Total Section */}
+        <div className="order-total-section">
+          <span className="total-label">Total Amount</span>
+          <span className="total-amount">₹{calculateOrderTotal(selectedOrder.items).toLocaleString('en-IN')}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };

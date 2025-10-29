@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Loader, X } from "lucide-react";
 import "./KYCs.css";
 
 const KYCs = () => {
@@ -8,9 +8,17 @@ const KYCs = () => {
   const [rejectedApprovals, setRejectedApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [signedUrls, setSignedUrls] = useState({});
+  const [coordinators, setCoordinators] = useState([]);
+  const [selectedCoordinator, setSelectedCoordinator] = useState("");
+  const [selectedKycId, setSelectedKycId] = useState(null);
+  const [selectedKycData, setSelectedKycData] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(false);
+
   const backendUrl = import.meta.env.VITE_APP_BACKEND_URL;
 
+  // Initial fetch - only get the list, not full details
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -25,92 +33,8 @@ const KYCs = () => {
         const pending = response.data.pending || [];
         const rejected = response.data.rejected || [];
 
-        console.log("API Response - Pending:", pending);
-        console.log("API Response - Rejected:", rejected);
-
-        // Fetch full details for each KYC
-        const fetchFullKYCDetails = async (kycList) => {
-          return await Promise.all(
-            kycList.map(async (kyc) => {
-              const id = String(kyc._id?.$oid || kyc._id || kyc.id);
-              try {
-                const detailResponse = await axios.get(
-                  `${backendUrl}/kyc/${id}`,
-                  { headers: { Authorization: `Bearer ${token}` } }
-                );
-                return detailResponse.data || kyc;
-              } catch (err) {
-                console.error(`Failed to fetch details for ${id}:`, err);
-                return kyc;
-              }
-            })
-          );
-        };
-
-        const pendingWithDetails = await fetchFullKYCDetails(pending);
-        const rejectedWithDetails = await fetchFullKYCDetails(rejected);
-
-        setPendingApprovals(pendingWithDetails);
-        setRejectedApprovals(rejectedWithDetails);
-
-        const allKYCs = [...pendingWithDetails, ...rejectedWithDetails];
-        const urls = {};
-
-        console.log("KYC Objects with Details:", allKYCs);
-
-        // Fetch all document URLs
-        await Promise.all(
-          allKYCs.map(async (kyc) => {
-            const id = String(kyc._id?.$oid || kyc._id || kyc.id);
-            if (!id || id === "undefined") {
-              console.error("Invalid KYC ID:", kyc);
-              return;
-            }
-            urls[id] = {};
-
-            const docs = [
-              { key: "aadhaar_front", name: "aadhaar_front" },
-              { key: "aadhaar_back", name: "aadhaar_back" },
-              { key: "license_front", name: "license_front" },
-              { key: "license_back", name: "license_back" },
-            ];
-
-            await Promise.all(
-              docs.map(async ({ key, name }) => {
-                const fileKey = kyc[key];
-                if (!fileKey) {
-                  console.log(`No ${key} for KYC ${id}`);
-                  return;
-                }
-
-                try {
-                  const res = await axios.post(
-                    `${backendUrl}/installations/get-image`,
-                    { key: fileKey },
-                    { headers: { Authorization: `Bearer ${token}` } }
-                  );
-
-                  const signedUrl =
-                    res.data?.url ||
-                    res.data?.data?.url ||
-                    res.data?.signedUrl ||
-                    null;
-                  urls[id][name] = signedUrl;
-                  console.log(`✅ Fetched ${name} for ${id}:`, signedUrl);
-                } catch (err) {
-                  console.error(
-                    `❌ Error fetching ${key}:`,
-                    err.response?.data || err.message
-                  );
-                  urls[id][name] = null;
-                }
-              })
-            );
-          })
-        );
-
-        console.log("✅ Final Signed URLs:", urls);
-        setSignedUrls(urls);
+        setPendingApprovals(pending);
+        setRejectedApprovals(rejected);
       } catch (err) {
         console.error("Error fetching KYC approvals:", err);
         setError("Failed to load KYC approvals");
@@ -122,53 +46,179 @@ const KYCs = () => {
     fetchData();
   }, [backendUrl]);
 
-  const handleApprove = async (id) => {
+  // Fetch coordinators
+  useEffect(() => {
+    const fetchCoordinators = async () => {
+      try {
+        const token = localStorage.getItem("authToken");
+        const res = await axios.get(`${backendUrl}/admin/co-ordinators`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setCoordinators(res.data.coordinators || []);
+      } catch (err) {
+        console.error("Failed to load coordinators:", err);
+        setCoordinators([]);
+      }
+    };
+
+    fetchCoordinators();
+  }, [backendUrl]);
+
+  // Fetch full KYC details - used for both approve and view
+  const fetchKycDetails = async (kycItem) => {
+    const id = String(kycItem._id?.$oid || kycItem._id || kycItem.id);
+    setSelectedKycId(id);
+    setModalLoading(true);
+
     try {
-      const res = await axios.post(`${backendUrl}/kyc/approve`, { id });
-      setPendingApprovals((prev) => prev.filter((item) => item._id !== id));
-      setRejectedApprovals((prev) => [
-        ...prev,
-        { ...res.data.data, status: "approved" },
-      ]);
+      const token = localStorage.getItem("authToken");
+      
+      // Fetch full KYC details
+      const detailResponse = await axios.get(`${backendUrl}/kyc/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const kycData = detailResponse.data || kycItem;
+
+      // Fetch signed URLs for documents
+      const signedUrls = {};
+      const docs = [
+        { key: "aadhaar_front", name: "aadhaar_front" },
+        { key: "aadhaar_back", name: "aadhaar_back" },
+        { key: "license_front", name: "license_front" },
+        { key: "license_back", name: "license_back" },
+      ];
+
+      await Promise.all(
+        docs.map(async ({ key, name }) => {
+          const fileKey = kycData[key];
+          if (!fileKey) return;
+          try {
+            const res = await axios.post(
+              `${backendUrl}/installations/get-image`,
+              { key: fileKey },
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const signedUrl =
+              res.data?.url ||
+              res.data?.data?.url ||
+              res.data?.signedUrl ||
+              null;
+            signedUrls[name] = signedUrl;
+          } catch {
+            signedUrls[name] = null;
+          }
+        })
+      );
+
+      setSelectedKycData({ ...kycData, signedUrls });
+    } catch (err) {
+      console.error("Error fetching KYC details:", err);
+      setError("Failed to load KYC details");
+      setSelectedKycData(null);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  // Open modal for approval
+  const openApproveModal = async (kycItem) => {
+    setIsViewOnly(false);
+    setShowModal(true);
+    await fetchKycDetails(kycItem);
+  };
+
+  // Open modal for viewing only (rejected KYCs)
+  const openViewModal = async (kycItem) => {
+    setIsViewOnly(true);
+    setShowModal(true);
+    await fetchKycDetails(kycItem);
+  };
+
+  const handleApproveSubmit = async () => {
+    if (!selectedCoordinator) {
+      alert("Please select a coordinator");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("authToken");
+      await axios.post(
+        `${backendUrl}/kyc/approve`,
+        { id: selectedKycId, coordinator_id: selectedCoordinator },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setPendingApprovals((prev) =>
+        prev.filter((item) => {
+          const itemId = String(item._id?.$oid || item._id || item.id);
+          return itemId !== selectedKycId;
+        })
+      );
+      
+      setShowModal(false);
+      setSelectedCoordinator("");
+      setSelectedKycId(null);
+      setSelectedKycData(null);
+      alert("KYC approved successfully!");
     } catch (err) {
       console.error("Error approving KYC:", err);
-      setError("Failed to approve KYC");
+      alert("Failed to approve KYC");
     }
   };
 
   const handleReject = async (id) => {
+    if (!confirm("Are you sure you want to reject this KYC?")) return;
+
     try {
-      const res = await axios.post(`${backendUrl}/kyc/reject`, { id });
-      setPendingApprovals((prev) => prev.filter((item) => item._id !== id));
+      const token = localStorage.getItem("authToken");
+      const res = await axios.post(
+        `${backendUrl}/kyc/reject`,
+        { id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setPendingApprovals((prev) => {
+        const filtered = prev.filter((item) => {
+          const itemId = String(item._id?.$oid || item._id || item.id);
+          return itemId !== id;
+        });
+        return filtered;
+      });
+      
       setRejectedApprovals((prev) => [
         ...prev,
         { ...res.data.data, status: "rejected" },
       ]);
+      
+      alert("KYC rejected successfully!");
     } catch (err) {
       console.error("Error rejecting KYC:", err);
-      setError("Failed to reject KYC");
+      alert("Failed to reject KYC");
     }
   };
 
-  const openDocument = (kycId, field) => {
-    const url = signedUrls[String(kycId)]?.[field];
-    console.log("Opening document:", { kycId, field, url });
-    if (url) {
-      window.open(url, "_blank");
-    } else {
-      alert("Document not available");
-    }
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedCoordinator("");
+    setSelectedKycId(null);
+    setSelectedKycData(null);
+    setIsViewOnly(false);
   };
 
   if (loading) {
     return (
-      <div className="kyc-page">
-        <div className="kyc-container">
-          <p className="loading-text">Loading...</p>
-        </div>
+      <div className="loading-spinner">
+        <Loader size={32} className="spinner-icon" />
+        <p>Loading KYCs...</p>
       </div>
     );
   }
+
+  const filteredPending = pendingApprovals.filter(
+    (item) =>
+      item.needs_onboarding === false && item.agreement_status === true
+  );
 
   return (
     <div className="kyc-page">
@@ -179,83 +229,46 @@ const KYCs = () => {
         <div className="kyc-section">
           <div className="section-header">
             <ClipboardCheck size={20} />
-            <h3>Pending KYC Approvals ({pendingApprovals.length})</h3>
+            <h3>Pending KYC Approvals ({filteredPending.length})</h3>
           </div>
 
-          {pendingApprovals.length === 0 ? (
+          {filteredPending.length === 0 ? (
             <p className="no-data-text">No pending KYCs</p>
           ) : (
             <div className="table-container">
               <table className="kyc-table">
                 <thead>
                   <tr>
+                    <th>ID</th>
                     <th>Plumber</th>
-                    <th>Address</th>
-                    <th>Aadhaar Front</th>
-                    <th>Aadhaar Back</th>
-                    <th>License Front</th>
-                    <th>License Back</th>
+                    <th>Phone</th>
+                    <th>City</th>
                     <th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingApprovals.map((item) => {
+                  {filteredPending.map((item) => {
                     const id = String(item._id?.$oid || item._id || item.id);
                     return (
                       <tr key={id}>
-                        <td>{item.name}</td>
-                        <td>
-                          {item.address
-                            ? `${item.address.address || ""}, ${
-                                item.address.city || ""
-                              }, ${item.address.district || ""}, ${
-                                item.address.state || ""
-                              }, ${item.address.pin || ""}`
-                            : item.city || "N/A"}
-                        </td>
-
-                        {[
-                          "aadhaar_front",
-                          "aadhaar_back",
-                          "license_front",
-                          "license_back",
-                        ].map((field) => (
-                          <td key={field}>
-                            {signedUrls[id]?.[field] ? (
-                              <button
-                                className="view-link"
-                                onClick={() => openDocument(id, field)}
-                              >
-                                View
-                              </button>
-                            ) : (
-                              "N/A"
-                            )}
-                          </td>
-                        ))}
-
+                        <td>{id}</td>
+                        <td>{item.name || "N/A"}</td>
+                        <td>{item.phone || item.mobile || "N/A"}</td>
+                        <td>{item.city || item.address?.city || "N/A"}</td>
                         <td>
                           <span className="status-badge pending">Pending</span>
                         </td>
                         <td>
                           <button
                             className="assign-btn"
-                            onClick={() =>
-                              handleApprove(
-                                item._id?.$oid || item._id || item.id
-                              )
-                            }
+                            onClick={() => openApproveModal(item)}
                           >
-                            Approve
+                            Review & Approve
                           </button>
                           <button
                             className="reject-btn"
-                            onClick={() =>
-                              handleReject(
-                                item._id?.$oid || item._id || item.id
-                              )
-                            }
+                            onClick={() => handleReject(id)}
                           >
                             Reject
                           </button>
@@ -282,12 +295,10 @@ const KYCs = () => {
               <table className="kyc-table">
                 <thead>
                   <tr>
+                    <th>ID</th>
                     <th>Plumber</th>
+                    <th>Phone</th>
                     <th>City</th>
-                    <th>Aadhaar Front</th>
-                    <th>Aadhaar Back</th>
-                    <th>License Front</th>
-                    <th>License Back</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -296,40 +307,21 @@ const KYCs = () => {
                     const id = String(item._id?.$oid || item._id || item.id);
                     return (
                       <tr key={id}>
-                        <td>{item.name}</td>
-                        <td>{item.address?.city || "N/A"}</td>
-
-                        {[
-                          "aadhaar_front",
-                          "aadhaar_back",
-                          "license_front",
-                          "license_back",
-                        ].map((field) => (
-                          <td key={field}>
-                            {signedUrls[id]?.[field] ? (
-                              <button
-                                className="view-link"
-                                onClick={() => openDocument(id, field)}
-                              >
-                                View
-                              </button>
-                            ) : (
-                              "N/A"
-                            )}
-                          </td>
-                        ))}
-
+                        <td>{id}</td>
                         <td>
-                          <span
-                            className={`status-badge ${
-                              item.status === "approved"
-                                ? "approved"
-                                : "rejected"
-                            }`}
+                          <button
+                            className="view-link"
+                            onClick={() => openViewModal(item)}
+                            style={{ textDecoration: "underline", cursor: "pointer" }}
                           >
-                            {item.status === "approved"
-                              ? "Approved"
-                              : "Rejected"}
+                            {item.name || "N/A"}
+                          </button>
+                        </td>
+                        <td>{item.phone || item.mobile || "N/A"}</td>
+                        <td>{item.city || item.address?.city || "N/A"}</td>
+                        <td>
+                          <span className="status-badge rejected">
+                            Rejected
                           </span>
                         </td>
                       </tr>
@@ -341,6 +333,115 @@ const KYCs = () => {
           )}
         </div>
       </div>
+
+      {/* ---------- Approve Modal ---------- */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: "800px" }}>
+            <div className="modal-header">
+              <h3>{isViewOnly ? "View KYC Details" : "Review KYC & Assign Coordinator"}</h3>
+              <button className="close-btn" onClick={closeModal}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {modalLoading ? (
+                <div style={{ textAlign: "center", padding: "20px" }}>
+                  <Loader size={32} className="spinner-icon" />
+                  <p>Loading KYC details...</p>
+                </div>
+              ) : selectedKycData ? (
+                <>
+                  {/* Plumber Details */}
+                  <div style={{ marginBottom: "20px" }}>
+                    <h4>Plumber Information</h4>
+                    <p><strong>Name:</strong> {selectedKycData.name || "N/A"}</p>
+                    <p><strong>Phone:</strong> {selectedKycData.phone || selectedKycData.mobile || "N/A"}</p>
+                    <p>
+                      <strong>Address:</strong>{" "}
+                      {selectedKycData.address
+                        ? `${selectedKycData.address.address || ""}, ${
+                            selectedKycData.address.city || ""
+                          }, ${selectedKycData.address.district || ""}, ${
+                            selectedKycData.address.state || ""
+                          }, ${selectedKycData.address.pin || ""}`
+                        : selectedKycData.city || "N/A"}
+                    </p>
+                    {isViewOnly && (
+                      <p>
+                        <strong>Status:</strong>{" "}
+                        <span className="status-badge rejected">Rejected</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Documents */}
+                  <div style={{ marginBottom: "20px" }}>
+                    <h4>Documents</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      {[
+                        { key: "aadhaar_front", label: "Aadhaar Front" },
+                        { key: "aadhaar_back", label: "Aadhaar Back" },
+                        { key: "license_front", label: "License Front" },
+                        { key: "license_back", label: "License Back" },
+                      ].map(({ key, label }) => (
+                        <div key={key}>
+                          <strong>{label}:</strong>{" "}
+                          {selectedKycData.signedUrls?.[key] ? (
+                            <button
+                              className="view-link"
+                              onClick={() =>
+                                window.open(
+                                  selectedKycData.signedUrls[key],
+                                  "_blank"
+                                )
+                              }
+                            >
+                              View Document
+                            </button>
+                          ) : (
+                            <span>Not available</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Coordinator Selection - Only show if not view only */}
+                  {!isViewOnly && (
+                    <div>
+                      <label><strong>Select Coordinator:</strong></label>
+                      <select
+                        value={selectedCoordinator}
+                        onChange={(e) => setSelectedCoordinator(e.target.value)}
+                        style={{ width: "100%", padding: "8px", marginTop: "5px" }}
+                      >
+                        <option value="">-- Select Coordinator --</option>
+                        {coordinators.map((coord) => (
+                          <option key={coord._id} value={coord._id}>
+                            {coord.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p>Failed to load KYC details</p>
+              )}
+            </div>
+
+            {!isViewOnly && (
+              <div className="modal-footer">
+                <button className="submit-btn" onClick={handleApproveSubmit} disabled={modalLoading}>
+                  Approve & Assign
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -31,7 +31,7 @@ const statsSlice = createSlice({
     leads: { 
       total: 0, 
       openInstallations: 0,
-      unassigned: [] // ✅ Correction: added unassigned array to hold unassigned leads
+      unassigned: [] 
     },
     loading: false,
     error: null,
@@ -57,7 +57,7 @@ const statsSlice = createSlice({
         state.leads = {
           total: action.payload.leads?.total || 0,
           openInstallations: action.payload.leads?.openInstallations || 0,
-          unassigned: action.payload.leads?.unassigned || [] // ✅ Correction: map unassigned leads from API
+          unassigned: action.payload.leads?.unassigned || [] 
         };
       })
       .addCase(fetchStats.rejected, (state, action) => {

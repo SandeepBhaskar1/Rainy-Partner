@@ -2,28 +2,37 @@
   "expo": {
     "name": "Rainy Partner App",
     "slug": "Rainy-Partner-App",
+    "scheme": "Rainy-Partner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "../assets/Rainy-Filter-Logo.png",
+    "icon": "./assets/Rainy-App-Icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "../../assets/Rainy-Filter-Logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "image": "./assets/Rainy-Filter-Logo-01.png",
+      "resizeMode": "cover",
+      "backgroundColor":"#ffffff"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Rainy-Filter-Logo.png",
+        "package": "com.rainyfilters.rainyplumber",
+        "foregroundImage": "./assets/Rainy-Filter-Logo-01.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
-      "favicon": "./assets/Rainy-Filter-Logo.png"
-    }
+      "favicon": "./assets/Rainy_Filter_Logo.png"
+    },
+    "plugins": [
+      "expo-localization"
+    ]
   }
 }

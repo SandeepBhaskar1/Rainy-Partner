@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../src/Context/AuthContext';
 import { Slot } from 'expo-router';
+import { LanguageProvider } from '../context/LanguageContext';
 
 const queryClient = new QueryClient();
 
@@ -12,8 +13,10 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+        <LanguageProvider>
           <StatusBar style="auto" />
           <Slot />
+          </LanguageProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

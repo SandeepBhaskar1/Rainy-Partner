@@ -13,27 +13,26 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "../src/Context/AuthContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import * as SecureStore from "expo-secure-store";
+import i18n from "../i18n";
+import { useLanguage } from "../context/LanguageContext";
 import axios from "axios";
 
 export default function AgreementScreen({ navigation }) {
   const { setUser, Backend_url } = useAuth();
   const [accepted, setAccepted] = useState(false);
-
-  const token = SecureStore.getItemAsync("access_token");
+  const { t } = useLanguage();
 
   const handleAccept = async () => {
     if (!accepted) {
       Alert.alert(
-        "Error",
-        "Please accept the terms and conditions to continue"
+        t("common.error"),
+        t("agreement.errorAccept")
       );
       return;
     }
 
-    console.log("📡 Sending request to:", `${Backend_url}/plumber/agreement`);
-    console.log("🧩 Token:", token ? "✅ Present" : "❌ Missing");
-    console.log("🔍 Backend URL:", Backend_url);
+    const token = await SecureStore.getItemAsync("access_token");
 
     try {
       const response = await axios.put(
@@ -45,23 +44,9 @@ export default function AgreementScreen({ navigation }) {
           },
         }
       );
-
-      console.log("✅ Backend response:", response.data);
-      console.log("📋 Response keys:", Object.keys(response.data));
-      console.log(
-        "🔑 Token in response:",
-        response.data.token ? "✅ Yes" : "❌ No"
-      );
-      console.log(
-        "👤 User in response:",
-        response.data.user ? "✅ Yes" : "❌ No"
-      );
-
       await AsyncStorage.removeItem("user_data");
 
       const updatedUserData = response.data.user;
-
-      console.log("🔍 Checking user:", updatedUserData);
 
       if (!updatedUserData || !updatedUserData._id) {
         throw new Error(
@@ -69,28 +54,20 @@ export default function AgreementScreen({ navigation }) {
         );
       }
 
-      console.log("📦 Fresh user data from backend:", updatedUserData);
-      console.log("✅ User ID confirmed:", updatedUserData._id);
-
       await AsyncStorage.setItem("user_data", JSON.stringify(updatedUserData));
       setUser(updatedUserData);
-      console.log(updatedUserData);
       
       router.push("/(tabs)/home");
-} catch (error) {
-  console.log("❌ Agreement request failed");
-  console.log("🪵 Error message:", error.message);
-  console.log("🪵 Stack:", error.stack);
-  console.log("🪵 Full response:", error.response?.data);
-  Alert.alert("Error", "Failed to save agreement acceptance");
-}
-  };256831
+    } catch (error) {
+      Alert.alert(t("common.error"), t("agreement.failedToSave"));
+    }
+  };
 
   const handleDecline = () => {
     Alert.alert(
-      "Agreement Declined",
-      "You must accept the agreement to use the app. The app will now close.",
-      [{ text: "OK", onPress: () => router.replace("/login") }]
+      t("agreement.declineTitle"),
+      t("agreement.declineMessage"),
+      [{ text: t("agreement.okButton"), onPress: () => router.replace("/login") }]
     );
   };
 
@@ -104,138 +81,83 @@ export default function AgreementScreen({ navigation }) {
           style={styles.logo}
           resizeMode="contain"
         />
-        <Text style={styles.title}>📑 Partner Plumber Agreement</Text>
-        <Text style={styles.subtitle}>Please review and accept our terms</Text>
+        <Text style={styles.title}>{t("agreement.title")}</Text>
+        <Text style={styles.subtitle}>{t("agreement.subtitle")}</Text>
       </View>
 
       <ScrollView style={styles.content}>
         <View style={styles.agreementCard}>
           <Text style={styles.agreementIntro}>
-            This Partner Plumber Agreement ("Agreement") is entered into
-            between:
+            {t("agreement.introText")}
           </Text>
           <Text style={styles.companyName}>
-            Farmland Rainwater Harvesting Systems (Brand: Rainy) ("Company")
+            {t("agreement.companyName")}
           </Text>
           <Text style={styles.agreementIntro}>
-            You, the registered plumber partner ("Plumber"), through acceptance
-            of these terms in the App.
+            {t("agreement.plumberText")}
           </Text>
           <Text style={styles.agreementIntro}>
-            By clicking "I Agree", you accept all obligations under this
-            Agreement.
+            {t("agreement.agreementNote")}
           </Text>
 
-          <Text style={styles.sectionTitle}>1. Appointment & Exclusivity</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section1Title")}</Text>
           <Text style={styles.text}>
-            1.1 The Company authorizes the Plumber solely to install Rainy
-            Filters and related products assigned through the App.
-            {"\n\n"}1.2 The Plumber shall not use the App, customer leads, or
-            Company's brand name to install, recommend, or promote any
-            competitor's products.
-            {"\n\n"}1.3 Violation of this clause will lead to immediate
-            termination and possible legal action.
+            {t("agreement.section1Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>2. Installation & Pricing</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section2Title")}</Text>
           <Text style={styles.text}>
-            2.1 Only Rainy Filters supplied by the Company may be installed
-            under this program.
-            {"\n\n"}2.2 For basic installations, only the standard agreed
-            charges as fixed by the Company shall be collected from customers.
-            {"\n\n"}2.3 Any additional charges (for extra piping, masonry, or
-            non-standard work) must be pre-informed to the customer and approved
-            through the App.
-            {"\n\n"}2.4 Overcharging, hidden charges, or deviation from approved
-            pricing will result in suspension/termination.
+            {t("agreement.section2Text")}
           </Text>
 
           <Text style={styles.sectionTitle}>
-            3. Customer Data & Confidentiality
+            {t("agreement.section3Title")}
           </Text>
           <Text style={styles.text}>
-            3.1 The Plumber will receive customer information (name, address,
-            phone, email, GST details) solely for the purpose of installation or
-            delivery.
-            {"\n\n"}3.2 The Plumber shall not misuse, share, store, sell, or
-            exploit customer data for personal or third-party benefit.
-            {"\n\n"}3.3 Any misuse of customer data will lead to immediate
-            blacklisting, legal action under IT and privacy laws, and recovery
-            of damages by the Company.
+            {t("agreement.section3Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>4. Payments</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section4Title")}</Text>
           <Text style={styles.text}>
-            4.1 Installation charges shall be collected directly from customers
-            strictly as per Company policy.
-            {"\n\n"}4.2 Product orders placed by the Plumber must be fully paid
-            in advance via the App.
-            {"\n\n"}4.3 Partner pricing will be displayed transparently within
-            the App and may be updated by the Company from time to time.
+            {t("agreement.section4Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>5. Obligations of the Plumber</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section5Title")}</Text>
           <Text style={styles.text}>
-            • Upload valid KYC documents (Aadhar, Plumber License, GST if
-            applicable).
-            {"\n"}• Follow all installation manuals and safety guidelines.
-            {"\n"}• Maintain professional behavior and integrity with customers.
-            {"\n"}• Use own tools, ensure safety, and not misrepresent as an
-            employee of the Company.
-            {"\n"}• Not engage in activities that damage the Company's
-            reputation.
+            {t("agreement.section5Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>6. Obligations of the Company</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section6Title")}</Text>
           <Text style={styles.text}>
-            • Provide installation training, product manuals, and technical
-            guidance.
-            {"\n"}• Ensure timely processing of orders placed through the App.
-            {"\n"}• Provide partner support through the App and customer care.
+            {t("agreement.section6Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>7. Liability & Indemnity</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section7Title")}</Text>
           <Text style={styles.text}>
-            7.1 The Plumber is fully responsible for workmanship, safety, and
-            customer satisfaction.
-            {"\n\n"}7.2 The Plumber shall indemnify the Company against all
-            claims, damages, or losses caused by negligence, misconduct,
-            overcharging, or misuse of customer data.
-            {"\n\n"}7.3 The Company shall not be liable for indirect or
-            consequential losses arising from the Plumber's actions.
+            {t("agreement.section7Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>8. Termination</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section8Title")}</Text>
           <Text style={styles.text}>
-            Either Party may terminate with 7 days' notice.
-            {"\n\n"}The Company may terminate immediately in case of:
-            {"\n"}• Installation of non-Rainy products.
-            {"\n"}• Overcharging or deviation from approved pricing.
-            {"\n"}• Misuse of customer data.
-            {"\n"}• Misconduct, fraud, or violation of this Agreement.
+            {t("agreement.section8Text")}
           </Text>
 
           <Text style={styles.sectionTitle}>
-            9. Governing Law & Dispute Resolution
+            {t("agreement.section9Title")}
           </Text>
           <Text style={styles.text}>
-            • Governed by the laws of India.
-            {"\n"}• Disputes shall be referred to arbitration in Bangalore,
-            Karnataka under the Arbitration and Conciliation Act, 1996.
-            {"\n"}• Bangalore courts shall have exclusive jurisdiction.
+            {t("agreement.section9Text")}
           </Text>
 
-          <Text style={styles.sectionTitle}>10. Entire Agreement</Text>
+          <Text style={styles.sectionTitle}>{t("agreement.section10Title")}</Text>
           <Text style={styles.text}>
-            This Agreement constitutes the entire understanding between the
-            Parties and overrides any previous arrangement.
+            {t("agreement.section10Text")}
           </Text>
 
           <View style={styles.contactInfo}>
-            <Text style={styles.contactTitle}>Contact Support</Text>
+            <Text style={styles.contactTitle}>{t("agreement.contactTitle")}</Text>
             <Text style={styles.contactText}>
-              Email: sales@rainyfilters.com
-              {"\n"}Phone: +91 9008340790
+              {t("agreement.contactText")}
             </Text>
           </View>
         </View>
@@ -250,8 +172,7 @@ export default function AgreementScreen({ navigation }) {
             {accepted && <Ionicons name="checkmark" size={16} color="white" />}
           </View>
           <Text style={styles.checkboxText}>
-            By clicking "I Agree", I confirm that I have read, understood, and
-            agree to be legally bound by this Agreement.
+            {t("agreement.checkboxText")}
           </Text>
         </TouchableOpacity>
 
@@ -260,7 +181,7 @@ export default function AgreementScreen({ navigation }) {
             style={styles.declineButton}
             onPress={handleDecline}
           >
-            <Text style={styles.declineButtonText}>Decline</Text>
+            <Text style={styles.declineButtonText}>{t("agreement.declineButton")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -271,7 +192,7 @@ export default function AgreementScreen({ navigation }) {
             onPress={handleAccept}
             disabled={!accepted}
           >
-            <Text style={styles.acceptButtonText}>I Agree</Text>
+            <Text style={styles.acceptButtonText}>{t("agreement.agreeButton")}</Text>
           </TouchableOpacity>
         </View>
       </View>

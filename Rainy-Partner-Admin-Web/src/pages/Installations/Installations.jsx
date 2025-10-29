@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CirclePlus, X, ClipboardList, MapPin } from "lucide-react";
+import { CirclePlus, X, ClipboardList, MapPin, Loader } from "lucide-react";
 import axios from "axios";
 import "./Installations.css";
 
@@ -13,6 +13,8 @@ const Installations = () => {
   const [selectedInstallation, setSelectedInstallation] = useState(null);
   const [assignLoading, setAssignLoading] = useState(false);
   const [selectedPlumber, setSelectedPlumber] = useState("");
+  const [showReassignModal, setShowReassignModal] = useState(false);
+const [newPlumberId, setNewPlumberId] = useState("");
   const [formData, setFormData] = useState({
     customerName: "",
     contact: "",
@@ -37,6 +39,7 @@ const Installations = () => {
 
   const fetchInstallations = async () => {
     try {
+      setLoading(true)
       const response = await axios.get(`${BACKEND_URL}/post-leads`);
       setInstallations(response.data);
       setLoading(false);
@@ -44,21 +47,25 @@ const Installations = () => {
       console.error("Error fetching installations:", error);
       setError(true);
       setLoading(false);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchPlumbers = async () => {
     try {
+      setLoading(true)
       const token = localStorage.getItem("authToken");
       const response = await axios.get(`${BACKEND_URL}/admin/plumbers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const plumbersData = response.data.plumbers || response.data || [];
       setPlumbers(plumbersData);
-      console.log(plumbersData);
-      
+      console.log("Plumbers data:", plumbersData);
     } catch (error) {
       console.error("Error fetching plumbers:", error);
+    } finally {
+      setLoading(false)
     }
   };
 
@@ -121,26 +128,41 @@ const Installations = () => {
     setOpenAssignModal(true);
   };
 
+  // CHANGED: Added detailed logging to debug assignment issues
   const handleAssignInstallation = async (plumberId) => {
     if (!plumberId) {
       alert("Please select a plumber");
       return;
     }
 
+    console.log("=== ASSIGNMENT DEBUG ===");
+    console.log("Plumber ID being sent:", plumberId);
+    console.log("Plumber ID type:", typeof plumberId);
+    
+    const plumber = plumbers.find((p) => p.id === plumberId || p._id === plumberId);
+    console.log("Plumber object found:", plumber);
+
     setAssignLoading(true);
 
     try {
       const token = localStorage.getItem("authToken");
+      const payload = {
+        assigned_plumber_id: plumberId,
+        status: "assigned",
+        assigned_on: new Date().toISOString(),
+      };
+
+      console.log("Payload being sent:", payload);
+
       const response = await axios.put(
         `${BACKEND_URL}/post-leads/${selectedInstallation._id}/assign`,
-        {
-          assigned_plumber_id: plumberId,
-          status: "assigned",
-        },
+        payload,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
+
+      console.log("Response from backend:", response.data);
 
       if (response.status === 200) {
         alert("Plumber assigned successfully!");
@@ -199,7 +221,7 @@ const Installations = () => {
     const urls = {};
 
     for (const inst of installations) {
-      urls[inst._id] = {}; 
+      urls[inst._id] = {};
 
       try {
         const { completion_images } = inst;
@@ -269,6 +291,99 @@ const Installations = () => {
     });
     return servicePins;
   };
+
+// Handler for reassigning plumber
+const handleReassignPlumber = (installation) => {
+  setSelectedInstallation(installation);
+  setShowReassignModal(true);
+};
+
+// Handler for confirming reassignment
+const handleConfirmReassign = async () => {
+  if (!newPlumberId) {
+    alert("Please select a plumber");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("authToken");
+    await axios.put(
+      `${BACKEND_URL}/post-leads/${selectedInstallation._id}/reassign`,
+      {
+        status: 'assigned',
+        assigned_plumber_id: newPlumberId,
+        assigned_on: new Date().toISOString(),
+      },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    alert("Plumber reassigned successfully!");
+    setShowReassignModal(false);
+    setNewPlumberId("");
+    setSelectedInstallation(null);
+    fetchInstallations();
+    console.log(newPlumberId);
+    
+  } catch (error) {
+    console.error("Error reassigning plumber:", error);
+    alert(error.response?.data?.message || "Failed to reassign plumber");
+  }
+};
+
+// Handler for canceling installation
+const handleCancelInstallation = async (installationId) => {
+  if (!window.confirm("Are you sure you want to cancel this installation?")) {
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("authToken");
+    await axios.put(
+      `${BACKEND_URL}/post-leads/${installationId}/cancel`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    alert("Installation cancelled successfully!");
+    fetchInstallations();
+  } catch (error) {
+    console.error("Error canceling installation:", error);
+    alert(error.response?.data?.message || "Failed to cancel installation");
+  }
+};
+
+  // CHANGED: Helper function to get plumber name and phone from plumber ID
+  // Handles both new data (ID) and legacy data (name with phone)
+  const getPlumberName = (plumberId) => {
+    if (!plumberId) return "N/A";
+    
+    // If it already looks like "Name (Phone)", return it as is (legacy data)
+    if (plumberId.includes("(") && plumberId.includes(")")) {
+      return plumberId;
+    }
+    
+    // Look up the plumber by ID (supports both 'id' and '_id' fields)
+    const plumber = plumbers.find((p) => p.id === plumberId || p._id === plumberId);
+    
+    if (plumber) {
+      return `${plumber.name} (${plumber.phone})`;
+    }
+    
+    // Fallback: return the raw value if plumber not found
+    return plumberId;
+  };
+
+    if (loading)
+      return (
+          <div className="loading-spinner">
+              <Loader size={32} className="spinner-icon" />
+          <p>Loading plumbers...</p>
+        </div>
+      );
 
   return (
     <div className="installations-page">
@@ -389,7 +504,7 @@ const Installations = () => {
                           {installation.client?.name}
                         </td>
                         <td className="plumber">
-                          {installation.assigned_plumber_id || "N/A"}
+                          {getPlumberName(installation.assigned_plumber_id)}
                         </td>
                         <td className="status-badge">
                           <span
@@ -450,25 +565,34 @@ const Installations = () => {
                         </td>
 
                         <td className="assign-cell">
-                          {installation.status === "under_review" ? (
-                            <button
-                              className="assign-btn approve-btn"
-                              onClick={() => handleApprove(installation._id)}
-                            >
-                              Approve
-                            </button>
-                          ) : (
-                            <span className={`waiting-text ${
-    installation.status === "assigned"
-      ? "assigned"
-      : installation.status === "under_review"
-      ? "under-review"
-      : ""
-  }`}>
-                              {installation.status === 'assigned' ? 'Assigned' : installation.status === 'under_review' ? 'Under Review' : ''}
-                            </span>
-                          )}
-                        </td>
+  {installation.status === "under_review" ? (
+    <button
+      className="assign-btn approve-btn"
+      onClick={() => handleApprove(installation._id)}
+    >
+      Approve
+    </button>
+  ) : installation.status === "assigned" ? (
+    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      <button
+        className="assign-btn reassign-btn"
+        onClick={() => handleReassignPlumber(installation)}
+      >
+        Reassign
+      </button>
+      <button
+        className="assign-cancel-btn"
+        onClick={() => handleCancelInstallation(installation._id)}
+      >
+        Cancel
+      </button>
+    </div>
+  ) : (
+    <span className="waiting-text">
+      {installation.status}
+    </span>
+  )}
+</td>
                       </tr>
                     ))}
                 </tbody>
@@ -500,7 +624,7 @@ const Installations = () => {
                     <th>Plumber</th>
                     <th>Model</th>
                     <th>Serial Image</th>
-                    <th>Warraty</th>
+                    <th>Warranty</th>
                     <th>Installation Image</th>
                     <th>Completed On</th>
                   </tr>
@@ -515,9 +639,8 @@ const Installations = () => {
                           {installation.client?.name || "N/A"}
                         </td>
                         <td className="plumber">
-  {installation.assigned_plumber_id || "N/A"}
-</td>
-
+                          {getPlumberName(installation.assigned_plumber_id)}
+                        </td>
                         <td className="model">
                           {installation.model_purchased || "N/A"}
                         </td>
@@ -760,11 +883,16 @@ const Installations = () => {
                     </div>
                   </div>
 
+                  {/* CHANGED: Added logging to dropdown to debug plumber ID issues */}
                   <div className="assign-section">
                     <label>Choose Plumber</label>
                     <select
                       value={selectedPlumber}
-                      onChange={(e) => setSelectedPlumber(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        console.log("Dropdown changed to:", value);
+                        setSelectedPlumber(value);
+                      }}
                       className="assign-select"
                     >
                       <option value="">
@@ -772,11 +900,14 @@ const Installations = () => {
                       </option>
                       {plumbers
                         .filter((p) => p.kyc_status === "approved")
-                        .map((plumber) => (
-                          <option key={plumber._id} value={plumber._id}>
-                            {plumber.name} ({plumber.phone})
-                          </option>
-                        ))}
+                        .map((plumber) => {
+                          const plumberId = plumber.id || plumber._id;
+                          return (
+                            <option key={plumberId} value={plumberId}>
+                              {plumber.name} ({plumber.phone})
+                            </option>
+                          );
+                        })}
                     </select>
                   </div>
 
@@ -785,7 +916,7 @@ const Installations = () => {
                     {getFilteredPlumbers().length > 0 ? (
                       <div className="suggested-plumbers">
                         {getFilteredPlumbers().map((plumber) => (
-                          <div className="plumber-card" key={plumber._id}>
+                          <div className="plumber-card" key={plumber.id || plumber._id}>
                             <div className="plumber-info">
                               <h4>{plumber.name}</h4>
                               <div className="plumber-details">
@@ -801,7 +932,7 @@ const Installations = () => {
                             <button
                               className="assign-card-btn"
                               onClick={() =>
-                                handleAssignInstallation(plumber._id)
+                                handleAssignInstallation(plumber.id || plumber._id)
                               }
                               disabled={assignLoading}
                             >
@@ -835,6 +966,72 @@ const Installations = () => {
             </div>
           </>
         )}
+
+        {/* Reassign Plumber Modal */}
+{showReassignModal && (
+  <div
+    className="modal-overlay"
+    onClick={() => setShowReassignModal(false)}
+  >
+    <div
+      className="modal-content"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="modal-header">
+        <h3>Reassign Plumber</h3>
+        <button
+          className="modal-close"
+          onClick={() => setShowReassignModal(false)}
+        >
+          <X size={24} />
+        </button>
+      </div>
+
+      <div className="modal-body">
+        <p>
+          <strong>Installation ID:</strong> {selectedInstallation?._id}
+        </p>
+        <p>
+          <strong>Customer:</strong> {selectedInstallation?.client?.name}
+        </p>
+        <p>
+          <strong>Current Plumber:</strong>{" "}
+          {getPlumberName(selectedInstallation?.assigned_plumber_id)}
+        </p>
+
+        <div className="form-group" style={{ marginTop: "20px" }}>
+          <label>Select New Plumber *</label>
+          <select
+            value={newPlumberId}
+            onChange={(e) => setNewPlumberId(e.target.value)}
+            className="form-select"
+          >
+            <option value="">Select Plumber</option>
+            {plumbers
+              .filter((p) => p._id !== selectedInstallation?.assigned_plumber_id && p.kyc_status === 'approved')
+              .map((plumber) => (
+                <option key={plumber._id} value={plumber.id}>
+                  {plumber.name} - {plumber.phone}
+                </option>
+              ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="modal-footer">
+        <button
+          className="btn-cancel"
+          onClick={() => setShowReassignModal(false)}
+        >
+          Cancel
+        </button> 
+        <button className="btn-submit" onClick={handleConfirmReassign}>
+          Confirm Reassign
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );

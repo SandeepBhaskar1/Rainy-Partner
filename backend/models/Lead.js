@@ -34,6 +34,9 @@ const leadSchema = new mongoose.Schema({
     ref: 'User',
     default: ""
   },
+  assigned_on: {
+    type: Date
+  },
   status: {
     type: String,
     enum: ['not-assigned', 'assigned', 'under_review', 'completed', 'cancelled'],
@@ -61,6 +64,8 @@ const leadSchema = new mongoose.Schema({
   rejected_by: {type: String, default: null},
   rejected_at: {type: Date, default: null},
   rejection_reason: {type: String, default: null},
+  cancelled_at: {type: Date, default: null},
+  cancelled_by: {type: mongoose.Types.ObjectId},
   created_at: {
     type: Date,
     default: Date.now

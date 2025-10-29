@@ -1,10 +1,11 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
-const { body, validationResult } = require('express-validator');
-const User = require('../models/User');
-const { generateAdminToken, generateToken } = require('../middleware/auth');
-const { APIError, asyncHandler } = require('../middleware/errorHandler');
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const { v4: uuidv4 } = require("uuid");
+const { body, validationResult } = require("express-validator");
+const User = require("../models/User");
+const { generateAdminToken, generateToken } = require("../middleware/auth");
+const { APIError, asyncHandler } = require("../middleware/errorHandler");
+const { jwt } = require("jsonwebtoken")
 
 const router = express.Router();
 
@@ -16,121 +17,130 @@ const generateOTP = () => {
   return otp;
 };
 
-router.post('/send-otp', [
-  body('identifier')
-    .matches(/^[6-9]\d{9}$/)
-    .withMessage('Please provide a valid 10-digit Indian phone number')
-], asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {    
-    return res.status(400).json({
-      detail: errors.array()[0].msg,
-      errors: errors.array()
+router.post(
+  "/send-otp",
+  [
+    body("identifier")
+      .matches(/^[6-9]\d{9}$/)
+      .withMessage("Please provide a valid 10-digit Indian phone number"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        detail: errors.array()[0].msg,
+        errors: errors.array(),
+      });
+    }
+
+    const { identifier } = req.body;
+    const otp = generateOTP();
+
+    otpStorage.set(identifier, {
+      otp,
+      expires: Date.now() + 3 * 60 * 1000,
     });
-  }
 
-  const { identifier } = req.body;
-  const otp = generateOTP();
+    console.log(`📱 OTP for ${identifier}: ${otp}`);
 
-  otpStorage.set(identifier, {
-    otp,
-    expires: Date.now() + 3 * 60 * 1000 
-  });
-
-  console.log(`📱 OTP for ${identifier}: ${otp}`);
-
-  res.json({
-    message: 'OTP sent successfully',
-    otp
-  });
-}));
+    res.json({
+      message: "OTP sent successfully",
+      otp,
+    });
+  })
+);
 
 // Verify OTP and login
-router.post('/verify-otp', [
-  body('identifier')
-    .matches(/^[6-9]\d{9}$/)
-    .withMessage('Please provide a valid phone number'),
-  body('otp')
-    .isLength({ min: 6, max: 6 })
-    .withMessage('OTP must be 6 digits')
-], asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      detail: errors.array()[0].msg,
-      errors: errors.array()
-    });
-  }
+router.post(
+  "/verify-otp",
+  [
+    body("identifier")
+      .matches(/^[6-9]\d{9}$/)
+      .withMessage("Please provide a valid phone number"),
+    body("otp")
+      .isLength({ min: 6, max: 6 })
+      .withMessage("OTP must be 6 digits"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        detail: errors.array()[0].msg,
+        errors: errors.array(),
+      });
+    }
 
-  const { identifier, otp } = req.body;
-  
-  // Verify OTP
-  const otpData = otpStorage.get(identifier);
-  if (!otpData || otpData.expires < Date.now()) {
+    const { identifier, otp } = req.body;
+
+    // Verify OTP
+    const otpData = otpStorage.get(identifier);
+    if (!otpData || otpData.expires < Date.now()) {
+      otpStorage.delete(identifier);
+      return res.status(400).json({ detail: "OTP expired or invalid" });
+    }
+
+    if (otpData.otp !== otp) {
+      return res.status(400).json({ detail: "Invalid OTP" });
+    }
+
+    // Remove OTP after successful verification
     otpStorage.delete(identifier);
-    return res.status(400).json({ detail: 'OTP expired or invalid' });
-  }
 
-  if (otpData.otp !== otp) {
-    return res.status(400).json({ detail: 'Invalid OTP' });
-  }
+    // Find or create user
+    let user = await User.findByPhone(identifier);
 
-  // Remove OTP after successful verification
-  otpStorage.delete(identifier);
+    if (!user) {
+      // Create new plumber user
+      user = new User({
+        phone: identifier,
+        role: "PLUMBER",
+        needs_onboarding: true,
+        kyc_status: "pending",
+      });
+      await user.save();
+      console.log(`👤 New plumber registered: ${identifier}`);
+    }
 
-  // Find or create user
-  let user = await User.findByPhone(identifier);
-  
-  if (!user) {
-    // Create new plumber user
-    user = new User({
-      phone: identifier,
-      role: 'PLUMBER',
-      needs_onboarding: true,
-      kyc_status: 'pending'
-    });
+    // Update last login
+    user.last_login = new Date();
     await user.save();
-    console.log(`👤 New plumber registered: ${identifier}`);
-  }
 
-  // Update last login
-  user.last_login = new Date();
-  await user.save();
+    // Generate token
+    const accessToken = generateToken(user);
 
-  // Generate token
-  const accessToken = generateToken(user);
+    // Return user data in format expected by frontend
+    const userData = {
+      id: user._id,
+      phone: user.phone,
+      name: user.name,
+      role: user.role,
+      needs_onboarding: user.needs_onboarding,
+      kyc_status: user.kyc_status,
+      access_token: accessToken,
+      agreement_status: user.agreement_status,
+    };
 
-  // Return user data in format expected by frontend
-  const userData = {
-    id: user._id,
-    phone: user.phone,
-    name: user.name,
-    role: user.role,
-    needs_onboarding: user.needs_onboarding,
-    kyc_status: user.kyc_status,
-    access_token: accessToken,
-    agreement_status: user.agreement_status
-  };
-
-  res.json({
-    message: 'Login successful',
-    access_token: accessToken,
-    user: userData
-  });
-}));
-
+    res.json({
+      message: "Login successful",
+      access_token: accessToken,
+      user: userData,
+    });
+  })
+);
 
 // Admin register endpoint
 router.post(
-  '/admin-register',
+  "/admin-register",
   [
-    body('email').isEmail().withMessage('Please provide a valid email'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('name').optional().trim(),
-    body('phone')
+    body("email").isEmail().withMessage("Please provide a valid email"),
+    body("password")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters"),
+    body("name").optional().trim(),
+    body("phone")
       .optional()
       .matches(/^[6-9]\d{9}$/)
-      .withMessage('Please provide a valid 10-digit Indian phone number'),
+      .withMessage("Please provide a valid 10-digit Indian phone number"),
   ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
@@ -144,9 +154,11 @@ router.post(
     const { email, password, name, phone } = req.body;
 
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ email, role: 'ADMIN' });
+    const existingAdmin = await User.findOne({ email, role: "ADMIN" });
     if (existingAdmin) {
-      return res.status(400).json({ detail: 'Admin with this email already exists' });
+      return res
+        .status(400)
+        .json({ detail: "Admin with this email already exists" });
     }
 
     // Hash password
@@ -154,13 +166,13 @@ router.post(
 
     // Create new admin
     const admin = new User({
-      name: name || 'Administrator',
+      name: name || "Administrator",
       email,
-      phone: phone || '9999999999',
+      phone: phone || "9999999999",
       password_hash,
-      role: 'ADMIN',
+      role: "ADMIN",
       needs_onboarding: false,
-      kyc_status: 'approved',
+      kyc_status: "approved",
     });
 
     await admin.save();
@@ -169,7 +181,7 @@ router.post(
     const accessToken = generateToken(admin);
 
     res.status(201).json({
-      message: 'Admin registered successfully',
+      message: "Admin registered successfully",
       access_token: accessToken,
       user: {
         id: admin._id,
@@ -198,7 +210,7 @@ router.post(
       }
 
       const { email, password } = req.body;
-      console.log('Login attempt for:', email);
+      console.log("Login attempt for:", email);
 
       const admin = await User.findOne({ email, role: "ADMIN" });
       if (!admin) {
@@ -227,39 +239,110 @@ router.post(
         },
       });
     } catch (error) {
-      console.error('❌ Login Error:', error); // This will show the real error
-      res.status(500).json({ 
-        detail: 'Internal server error',
-        error: error.message 
+      console.error("❌ Login Error:", error); // This will show the real error
+      res.status(500).json({
+        detail: "Internal server error",
+        error: error.message,
       });
     }
   })
 );
-// Refresh token endpoint
-router.post('/refresh-token', asyncHandler(async (req, res) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  
-  if (!token) {
-    return res.status(401).json({ detail: 'No token provided' });
-  }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    const user = await User.findOne({ id: decoded.user_id });
-    
-    if (!user || !user.is_active) {
-      return res.status(401).json({ detail: 'User not found' });
+router.post(
+  "/coordinator-login",
+  [
+    body("identifier").trim().notEmpty().withMessage("Email or phone number is required"),
+    body("password").trim().notEmpty().withMessage("Password is required"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const newToken = generateToken(user.id);
-    
-    res.json({
-      access_token: newToken,
-      user: user.getProfile()
-    });
-  } catch (error) {
-    return res.status(401).json({ detail: 'Invalid token' });
+    const { identifier, password } = req.body;
+
+    try {
+      console.log("📩 Login request received:", { identifier });
+
+      const coordinator = await User.findOne({
+        $or: [{ email: identifier }, { phone: identifier }],
+      });
+
+      if (!coordinator) {
+        console.log("❌ Coordinator not found");
+        return res.status(404).json({ message: "Coordinator not found" });
+      }
+
+      console.log("✅ Found coordinator:", coordinator.email || coordinator.phone);
+
+      if (coordinator.role !== "COORDINATOR") {
+        console.log("🚫 Unauthorized role:", coordinator.role);
+        return res.status(403).json({ message: "Unauthorized user type." });
+      }
+
+      const isMatch = await bcrypt.compare(password, coordinator.password_hash);
+      console.log("🔐 Password match result:", isMatch);
+
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid password." });
+      }
+
+      coordinator.last_login = new Date()
+      await coordinator.save();
+
+      const accessToken = generateAdminToken(coordinator);
+
+
+      console.log("✅ Login successful for:", coordinator.name);
+
+      return res.status(200).json({
+        message: "Login successful",
+        token: accessToken,
+        coordinator: {
+          id: coordinator._id,
+          name: coordinator.name,
+          email: coordinator.email,
+          phone: coordinator.phone,
+          role: coordinator.role
+        },
+      });
+    } catch (error) {
+      console.error("💥 Coordinator login error:", error);
+      return res.status(500).json({ message: "Server error", error: error.message });
+    }
   }
-}));
+);
+
+
+// Refresh token endpoint
+router.post(
+  "/refresh-token",
+  asyncHandler(async (req, res) => {
+    const token = req.header("Authorization")?.replace("Bearer ", "");
+
+    if (!token) {
+      return res.status(401).json({ detail: "No token provided" });
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+      const user = await User.findOne({ id: decoded.user_id });
+
+      if (!user || !user.is_active) {
+        return res.status(401).json({ detail: "User not found" });
+      }
+
+      const newToken = generateToken(user.id);
+
+      res.json({
+        access_token: newToken,
+        user: user.getProfile(),
+      });
+    } catch (error) {
+      return res.status(401).json({ detail: "Invalid token" });
+    }
+  })
+);
 
 module.exports = router;

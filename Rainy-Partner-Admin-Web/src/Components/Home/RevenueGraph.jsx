@@ -1,3 +1,4 @@
+import { Loader } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import {
@@ -71,6 +72,8 @@ if (!orderList.length) return;
     setChartData(data);
   }, [orders]);
 
+
+
   return (
     <div
       style={{
@@ -102,7 +105,9 @@ if (!orderList.length) return;
       </div>
 
       {loading ? (
-        <p style={{ textAlign: "center", color: "#9ca3af" }}>Loading data...</p>
+        <div className="loading-spinner"> 
+        <Loader size={32} className="spinner-icon"/>
+        </div>
       ) : error ? (
         <p style={{ textAlign: "center", color: "#9ca3af" }}>No data available</p>
       ) : (

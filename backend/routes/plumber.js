@@ -33,6 +33,7 @@ router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
     profile: user.profile,
     aadhaar_number: user.aadhaar_number,
     trust: user.trust || 100,
+    coordinator_id: user.coordinator_id
   };
 
   res.json(profile);
@@ -80,7 +81,7 @@ router.get('/stats', async (req, res) => {
     // Fetch plumbers count and KYC status directly from MongoDB
     const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
     const approved = plumbers.filter(p => p.kyc_status === 'approved').length;
-    const pending = plumbers.filter(p => p.kyc_status === 'pending').length;
+    const pending = plumbers.filter(p => p.agreement_status === true && p.kyc_status === 'pending' ).length;
     const rejected = plumbers.filter(p => p.kyc_status === 'rejected').length;
 
     // Fetch orders and leads counts
@@ -503,5 +504,24 @@ router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(as
     status: 'completed'
   });
 }));
+
+router.get('/coordinator/:id',verifyPlumberToken, async (req, res) => {
+  try{
+    const {coordinator_id} = req.params.id;
+
+    const coordinator = await User.findOne(coordinator_id)
+    if (!coordinator) return res.status(404).json({message: 'Coordinator doesnt exist.'});
+
+    res.status(201).json({
+      name: coordinator.name,
+      phone: coordinator.phone,
+    })
+
+  } catch(error){
+    console.error('Error fetching coordinator details', error);
+    
+    return res.status(500).json({message: 'Server Error'})
+  }
+});
 
 module.exports = router;

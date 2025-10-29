@@ -2,7 +2,6 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { default: mongoose } = require('mongoose');
 
-// Verify JWT token
 const verifyToken = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -67,21 +66,17 @@ const verifyPlumberToken = async (req, res, next) => {
   }
 };
 
-// Verify admin token
 const verifyAdminToken = async (req, res, next) => {
   try {
-    console.log("🛡️ verifyAdminToken middleware called"); // ✅ Add this here
-
     const token = req.header('Authorization')?.replace('Bearer ', '');
+
     if (!token) {
       return res.status(401).json({ detail: 'Access token is missing' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    console.log("Decoded token:", decoded); // ✅ Add this to confirm token contents
 
     const user = await User.findOne({ _id: new mongoose.Types.ObjectId(decoded.id), role: 'ADMIN' });
-    console.log("Matched admin user:", user?.email || "Not found"); // ✅ Helpful to debug DB matching
 
     if (!user || !user.is_active) {
       return res.status(401).json({ detail: 'Invalid admin token' });
@@ -90,7 +85,7 @@ const verifyAdminToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error("Error in verifyAdminToken:", error); // ✅ Add this
+    console.error("Error in verifyAdminToken:", error); 
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ detail: 'Invalid admin token' });
     }
@@ -101,16 +96,38 @@ const verifyAdminToken = async (req, res, next) => {
   }
 };
 
+const verifyCoordinateToken = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if(!token){
+      return res.status(401).json({details: 'Access token is missing'});
+    }
 
-// Check if user is plumber
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+
+    const user = await User.findOne({_id: new mongoose.Types.ObjectId(decoded.id), role: 'COORDINATOR'});
+
+    if (!user || !user.is_active) {
+      return res.status(401).json({detail: 'Invalid Co-ordinator token'});
+    }
+    req.user = user;
+    next();
+  } catch (error){
+    console.error("Error in verifyCoordinatorToken: ", error);
+    if (error.name === 'JsonWebTokenError'){
+      return res.status(401).json({detail: 'Co-Ordinator token expired.'})
+    }
+    return res.status(500).json({detail: 'Co-Ordinator token Verification Failed.'})
+  }
+};
+
 const isPlumber = (req, res, next) => {
   if (req.user.role !== 'PLUMBER') {
     return res.status(403).json({ detail: 'Access denied. Plumber role required.' });
   }
   next();
 };
-
-// Check if user is admin  
+ 
 const isAdmin = (req, res, next) => {
   if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ detail: 'Access denied. Admin role required.' });
@@ -139,6 +156,7 @@ module.exports = {
   verifyToken,
   verifyPlumberToken,
   verifyAdminToken,
+  verifyCoordinateToken,
   isPlumber,
   isAdmin,
   generateToken,

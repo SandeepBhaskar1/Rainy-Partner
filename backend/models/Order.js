@@ -8,7 +8,6 @@ const orderSchema = new mongoose.Schema(
     },
     plumber_id: {
       type: String,
-      required: true,
       ref: "User",
     },
     client: {
@@ -71,6 +70,10 @@ const orderSchema = new mongoose.Schema(
       pin: String,
       gstin: String,
     },
+    invoiceKey: {
+      type: String,
+      default: null
+    },
     status: {
       type: String,
       enum: [
@@ -87,17 +90,19 @@ const orderSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    order_created_by: {type: mongoose.Types.ObjectId},
     awb_number: String,
     payment_status: String,
     payment_reference: String,
     advance_paid: Number,
     fulfilled_at: Date,
     fulfilled_by: String,
-  },
+    cancelled_at: Date,
+    cancelled_reason: String
+  }, 
   { timestamps: true }
 );
 
-// Pre-save hook to generate custom _id using Counter
 orderSchema.pre("save", async function (next) {
   if (this.isNew && !this._id) {
     try {
@@ -108,11 +113,10 @@ orderSchema.pre("save", async function (next) {
       const todayPrefix = `ORD-${y}${m}${d}-`;
       const todayDateStr = `${y}${m}${d}`;
 
-      // Increment counter atomically
       const counter = await Counter.findOneAndUpdate(
-        { date: todayDateStr },       // document per day
-        { $inc: { seq: 1 } },       // increment sequence
-        { new: true, upsert: true } // create if not exists
+        { date: todayDateStr },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
       );
 
       const seqStr = String(counter.seq).padStart(6, "0");
