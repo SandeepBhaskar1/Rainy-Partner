@@ -3,9 +3,10 @@ const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
-const { generateAdminToken, generateToken } = require("../middleware/auth");
+const { generateAdminToken, generateToken, generateAdminRefreshToken, verifyAdminToken } = require("../middleware/auth");
 const { APIError, asyncHandler } = require("../middleware/errorHandler");
-const { jwt } = require("jsonwebtoken")
+const jwt = require("jsonwebtoken")
+const axios = require("axios");
 
 const router = express.Router();
 
@@ -15,6 +16,37 @@ const generateOTP = () => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   console.log(`Generated OTP: ${otp}`);
   return otp;
+};
+
+const sendOTPViaSMS = async (phone, otp) => {
+  try {
+        console.log('📤 Sending OTP via Fast2SMS:', { phone, otp });
+
+    const response = await axios.post(
+      "https://www.fast2sms.com/dev/bulkV2",
+      {
+        route: "dlt",
+        sender_id: "RAINYP",
+        message: "202126",
+        variables_values: otp, 
+        flash: 0,
+        numbers: phone, 
+      },
+      {
+        headers: {
+          authorization: process.env.FAST2SMS_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+console.log('Sending OTP to:', phone, 'via Fast2SMS API');
+
+    console.log("✅ Fast2SMS Response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("❌ Fast2SMS Error:", error.response?.data || error.message);
+    throw new Error("Failed to send OTP");
+  }
 };
 
 router.post(
@@ -38,19 +70,25 @@ router.post(
 
     otpStorage.set(identifier, {
       otp,
-      expires: Date.now() + 3 * 60 * 1000,
+      expires: Date.now() + 5 * 60 * 1000,
     });
 
-    console.log(`📱 OTP for ${identifier}: ${otp}`);
+    try {
+      await sendOTPViaSMS(identifier, otp)
+      console.log(`📱 OTP for ${identifier}: ${otp}`);
 
-    res.json({
-      message: "OTP sent successfully",
-      otp,
-    });
+      res.json({
+        message: 'OTP sent successfully',
+        ...(process.env.NODE_ENV === 'development' && { otp }),
+      })
+    } catch (err) {
+      otpStorage.delete(identifier);
+      console.error('Error sending OTP:', err);
+      return res.status(500).json({ detail: 'Failed to send OTP', error: err.message });
+    };
   })
 );
 
-// Verify OTP and login
 router.post(
   "/verify-otp",
   [
@@ -72,7 +110,6 @@ router.post(
 
     const { identifier, otp } = req.body;
 
-    // Verify OTP
     const otpData = otpStorage.get(identifier);
     if (!otpData || otpData.expires < Date.now()) {
       otpStorage.delete(identifier);
@@ -83,14 +120,11 @@ router.post(
       return res.status(400).json({ detail: "Invalid OTP" });
     }
 
-    // Remove OTP after successful verification
     otpStorage.delete(identifier);
 
-    // Find or create user
     let user = await User.findByPhone(identifier);
 
     if (!user) {
-      // Create new plumber user
       user = new User({
         phone: identifier,
         role: "PLUMBER",
@@ -101,14 +135,11 @@ router.post(
       console.log(`👤 New plumber registered: ${identifier}`);
     }
 
-    // Update last login
     user.last_login = new Date();
     await user.save();
 
-    // Generate token
     const accessToken = generateToken(user);
 
-    // Return user data in format expected by frontend
     const userData = {
       id: user._id,
       phone: user.phone,
@@ -128,7 +159,6 @@ router.post(
   })
 );
 
-// Admin register endpoint
 router.post(
   "/admin-register",
   [
@@ -153,7 +183,6 @@ router.post(
 
     const { email, password, name, phone } = req.body;
 
-    // Check if admin already exists
     const existingAdmin = await User.findOne({ email, role: "ADMIN" });
     if (existingAdmin) {
       return res
@@ -161,10 +190,8 @@ router.post(
         .json({ detail: "Admin with this email already exists" });
     }
 
-    // Hash password
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Create new admin
     const admin = new User({
       name: name || "Administrator",
       email,
@@ -177,7 +204,6 @@ router.post(
 
     await admin.save();
 
-    // Generate token
     const accessToken = generateToken(admin);
 
     res.status(201).json({
@@ -226,6 +252,24 @@ router.post(
       await admin.save();
 
       const accessToken = generateAdminToken(admin);
+      const refreshToken = generateAdminRefreshToken(admin);
+
+      res.cookie("access_token", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+        maxAge: 1 * 60 * 1000,
+      });
+
+      res.cookie("refresh_token", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      console.log("✅ Cookies set successfully");
+console.log("Response headers:", res.getHeaders());
 
       res.status(200).json({
         success: true,
@@ -239,7 +283,7 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("❌ Login Error:", error); // This will show the real error
+      console.error("❌ Login Error:", error);
       res.status(500).json({
         detail: "Internal server error",
         error: error.message,
@@ -292,7 +336,22 @@ router.post(
       await coordinator.save();
 
       const accessToken = generateAdminToken(coordinator);
+      const refreshToken = generateAdminRefreshToken(coordinator);
 
+
+      res.cookie("access_token", accessToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "Strict",
+        maxAge: 15 * 60 * 1000,
+      });
+
+      res.cookie("refresh_token", refreshToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "Strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
 
       console.log("✅ Login successful for:", coordinator.name);
 
@@ -315,34 +374,120 @@ router.post(
 );
 
 
-// Refresh token endpoint
 router.post(
   "/refresh-token",
   asyncHandler(async (req, res) => {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
-
-    if (!token) {
-      return res.status(401).json({ detail: "No token provided" });
+    const refreshToken = req.cookies.refresh_token;
+    
+    if (!refreshToken) {
+      return res.status(401).json({ detail: "No refresh token provided" });
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-      const user = await User.findOne({ id: decoded.user_id });
-
+      const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET_KEY);
+      
+      const user = await User.findById(decoded.id).select('+refreshTokenVersion');
+      
       if (!user || !user.is_active) {
-        return res.status(401).json({ detail: "User not found" });
+        return res.status(401).json({ detail: "User not found or inactive" });
       }
 
-      const newToken = generateToken(user.id);
+      if (user.refreshTokenVersion && decoded.version !== user.refreshTokenVersion) {
+        return res.status(401).json({ detail: "Refresh token has been revoked" });
+      }
+
+      const newAccessToken = generateToken(user);
+      const newRefreshToken = generateAdminRefreshToken(user);
+
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+        path: "/", 
+      };
+
+      res.cookie("access_token", newAccessToken, {
+        ...cookieOptions,
+        maxAge: 15 * 60 * 1000, 
+      });
+
+      res.cookie("refresh_token", newRefreshToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000, 
+      });
 
       res.json({
-        access_token: newToken,
-        user: user.getProfile(),
+        success: true,
+        access_token: newAccessToken,
+        expires_in: 900,
       });
+
     } catch (error) {
-      return res.status(401).json({ detail: "Invalid token" });
+      res.clearCookie("refresh_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+        path: "/",
+      });
+
+      if (error.name === "TokenExpiredError") {
+        return res.status(401).json({ detail: "Refresh token expired" });
+      }
+      if (error.name === "JsonWebTokenError") {
+        return res.status(401).json({ detail: "Invalid refresh token" });
+      }
+
+      console.error("❌ Refresh token error:", error.message);
+      return res.status(401).json({ detail: "Token refresh failed" });
     }
   })
 );
+
+router.get("/verify", async (req, res) => {
+  try {
+    const token = req.cookies.access_token;
+    if (!token) {
+      return res.status(401).json({ loggedIn: false, message: "No access token" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    const user = await User.findById(decoded.id).select("-password_hash");
+
+    if (!user) {
+      return res.status(401).json({ loggedIn: false, message: "User not found" });
+    }
+
+    res.status(200).json({
+      loggedIn: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error("Error verifying token:", err.message);
+    return res.status(500).json({ loggedIn: false, message: "Token verification failed" });
+  }
+});
+
+router.post("/admin-logout", asyncHandler(async (req, res) => {
+  res.clearCookie("access_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+    path: '/'
+  });
+
+  res.clearCookie("refresh_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+    path: '/'
+  });
+
+  res.status(200).json({ success: true, message: "Logged out successfully" });
+}));
 
 module.exports = router;

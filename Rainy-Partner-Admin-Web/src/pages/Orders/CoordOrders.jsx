@@ -14,8 +14,8 @@ import {
   Info,
 } from "lucide-react";
 import "./Orders.css";
+import api from "../../api/axiosInstence";
 
-// Toast Notification Component
 const Toast = ({ message, type, onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 5000);
@@ -39,7 +39,6 @@ const Toast = ({ message, type, onClose }) => {
   );
 };
 
-// Confirmation Dialog Component
 const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, loading }) => {
   if (!isOpen) return null;
 
@@ -61,7 +60,6 @@ const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, loading })
   );
 };
 
-// Input validation schemas
 const validators = {
   phone: (value) => /^[0-9]{10}$/.test(value.replace(/\s/g, "")),
   pin: (value) => /^[0-9]{6}$/.test(value),
@@ -69,7 +67,6 @@ const validators = {
   minLength: (value, min) => value && value.trim().length >= min,
 };
 
-// Sanitize input to prevent XSS
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
   return input.replace(/[<>]/g, '');
@@ -89,6 +86,10 @@ const Orders = () => {
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
   const [actionLoading, setActionLoading] = useState({});
   const [validationErrors, setValidationErrors] = useState({});
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [orderToCancel, setOrderToCancel] = useState(null);
   
   const [pagination, setPagination] = useState({
     page: 1,
@@ -130,20 +131,12 @@ const Orders = () => {
   // API helper with error handling
   const apiCall = async (method, url, data = null, config = {}) => {
     try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        throw new Error("Authentication required");
-      }
-
       const response = await axios({
         method,
         url: `${backendUrl}${url}`,
         data,
+        withCredentials: true,
         ...config,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...config.headers,
-        },
       });
 
       return response.data;
@@ -173,7 +166,7 @@ const Orders = () => {
 
   const fetchUserData = async () => {
     try {
-      const storedUser = localStorage.getItem("user");
+      const storedUser = sessionStorage.getItem("user");
       if (!storedUser) {
         showToast("Authentication required. Please login.", "error");
         redirectToLogin();
@@ -182,6 +175,7 @@ const Orders = () => {
 
       const response = await apiCall("get", "/coordinator/profile");
       const assignedPlumbers = response.assigned_plumbers || [];
+      
       setAssignedPlumberIds(assignedPlumbers);
     } catch (error) {
       console.error("Error fetching user data:", error);
@@ -267,12 +261,28 @@ const Orders = () => {
   };
 
   const redirectToLogin = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("user");
     setTimeout(() => {
       window.location.href = "/login";
     }, 2000);
   };
+
+    const getStatusBadgeClass = (status) => {
+  switch (status) {
+    case "Order-Placed":
+      return "Order-Placed";
+    case "Payment-Completed":
+      return "Payment-Completed";
+    case "Dispatched":
+      return "Dispatched";
+    case "Fulfilled":
+      return "Fulfilled";
+    case "Cancelled":
+      return "Cancelled";
+    default:
+      return "";
+  }
+};
 
   const getFilteredOrders = useCallback(() => {
     if (!Array.isArray(orders)) return [];
@@ -528,7 +538,7 @@ const Orders = () => {
         return;
       }
 
-      const storedUser = localStorage.getItem("user");
+      const storedUser = sessionStorage.getItem("user");
       let userId = null;
     
       if (storedUser) {
@@ -609,7 +619,14 @@ const Orders = () => {
     }
   };
 
+  // CORRECTION: Modified handleStatusChange to handle cancellation with reason modal
   const handleStatusChange = async (order, newStatus) => {
+    if (newStatus === "Cancelled") {
+      setOrderToCancel(order);
+      setShowCancelModal(true);
+      return;
+    }
+
     setConfirmDialog({
       isOpen: true,
       title: "Confirm Status Change",
@@ -639,6 +656,72 @@ const Orders = () => {
       },
       onCancel: () => setConfirmDialog({ isOpen: false }),
     });
+  };
+
+  // CORRECTION: Added cancel reason submission handler
+  const handleCancelReasonSubmit = () => {
+    if (!cancelReason.trim()) {
+      showToast("Please provide a cancellation reason", "error");
+      return;
+    }
+    setShowCancelModal(false);
+    setShowCancelConfirm(true);
+  };
+
+  // CORRECTION: Added cancel confirmation handler
+  const handleCancelConfirm = async (confirmed) => {
+    if (!confirmed) {
+      setShowCancelConfirm(false);
+      setCancelReason("");
+      setOrderToCancel(null);
+      return;
+    }
+
+    setActionLoading((prev) => ({ ...prev, [`cancel-${orderToCancel._id}`]: true }));
+
+    try {
+      const storedUser = sessionStorage.getItem("user");
+      let userId = null;
+    
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          userId = parsedUser.id || parsedUser._id;
+        } catch (error) {
+          console.error("Error parsing user data:", error);
+        }
+      }
+
+      await apiCall("put", `/coordinator/orders/${orderToCancel._id}/status`, {
+        status: "Cancelled",
+        cancelled_reason: cancelReason.trim(),
+        cancelled_by: userId
+      });
+
+      setOrders((prevOrders) =>
+        prevOrders.map((o) =>
+          o._id === orderToCancel._id
+            ? {
+                ...o,
+                status: "Cancelled",
+                cancelled_reason: cancelReason.trim(),
+                cancelled_by: userId,
+                cancelled_at: new Date().toISOString()
+              }
+            : o
+        )
+      );
+
+      showToast("Order cancelled successfully", "success");
+    } catch (err) {
+      console.error("Failed to cancel order:", err);
+      showToast(err.response?.data?.message || "Failed to cancel order", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`cancel-${orderToCancel._id}`]: false }));
+      setShowCancelConfirm(false);
+      setCancelReason("");
+      setOrderToCancel(null);
+    }
   };
 
   const handleSaveAWB = async (order) => {
@@ -720,27 +803,14 @@ const Orders = () => {
     setActionLoading((prev) => ({ ...prev, [`invoice-${order._id}`]: true }));
 
     try {
-      const token = localStorage.getItem("authToken");
-      
-      if (!token) {
-        showToast("Authentication required. Please login again.", "error");
-        return;
-      }
-
       const formData = new FormData();
       formData.append('invoice', file);
       formData.append('docType', 'invoice');
       formData.append('fileType', 'pdf');
 
-      const response = await axios.post(
-        `${backendUrl}/coordinator/order/upload-invoice/${order._id}`,
+      const response = await api.post(
+        `/coordinator/order/upload-invoice/${order._id}`,
         formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
-        }
       );
 
       showToast('Invoice uploaded successfully', 'success');
@@ -750,7 +820,6 @@ const Orders = () => {
           ...selectedOrder,
           invoiceKey: response.data.data.invoiceKey
         });
-        console.log(selectedOrder);
         
       }
 
@@ -889,7 +958,10 @@ const Orders = () => {
                       {status === "Dispatched" && <th>AWB/Tracking ID</th>}
                       {status === "Dispatched" && <th>Fulfilment</th>}
                       {(status === "Order-Placed" || status === "Payment-Completed") && <th>Status</th>}
-                      {(status === "Fulfilled" || status === "Cancelled") && <th>{status === "Fulfilled" ? "Delivered On" : "Cancelled On"}</th>}
+                      {/* CORRECTION: Added Reason column for Cancelled orders */}
+                      {status === "Fulfilled" && <th>Delivered On</th>}
+                      {status === "Cancelled" && <th>Cancelled On</th>}
+                      {status === "Cancelled" && <th>Reason</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -980,7 +1052,9 @@ const Orders = () => {
                             <td>
                               <select
                                 value={order.status || "Order-Placed"}
-                                className="status-dropdown"
+                                className={`status-dropdown ${getStatusBadgeClass(
+                              order.status
+                            )}`}
                                 onChange={(e) => handleStatusChange(order, e.target.value)}
                                 disabled={actionLoading[`status-${order._id}`]}
                                 aria-label="Change order status"
@@ -994,20 +1068,26 @@ const Orders = () => {
                             </td>
                           )}
 
-                          {(status === "Fulfilled" || status === "Cancelled") && (
+                          {status === "Fulfilled" && (
                             <td>
-                              {formatDate(
-                                status === "Fulfilled" 
-                                  ? (order.fulfilled_at || order.fulfilledAt)
-                                  : (order.cancelled_at || order.cancelledAt)
-                              )}
+                              {formatDate(order.fulfilled_at || order.fulfilledAt)}
                             </td>
+                          )}
+
+                          {/* CORRECTION: Added cancelled_at and cancelled_reason columns */}
+                          {status === "Cancelled" && (
+                            <>
+                              <td>
+                                {formatDate(order.cancelled_at || order.cancelledAt)}
+                              </td>
+                              <td>{order.cancelled_reason || "N/A"}</td>
+                            </>
                           )}
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: "center", padding: "2rem" }}>
+                        <td colSpan="11" style={{ textAlign: "center", padding: "2rem" }}>
                           No orders found in this section.
                         </td>
                       </tr>
@@ -1043,7 +1123,6 @@ const Orders = () => {
         )}
       </div>
 
-      {/* Create Order Modal */}
       {showCreateModal && (
         <div
           className="modal-overlay"
@@ -1526,13 +1605,35 @@ const Orders = () => {
                   <span className="date-label">Order Date</span>
                   <span className="date-value">{formatDate(selectedOrder.createdAt)}</span>
                 </div>
-                {selectedOrder.fulfilled_at && (
-                  <div className="date-card fulfilled-date-card">
-                    <span className="date-label">Fulfilled On</span>
-                    <span className="date-value">{formatDate(selectedOrder.fulfilled_at )}</span>
-                  </div>
-                )}
+                {selectedOrder.status === "Fulfilled" && selectedOrder.fulfilled_at && (
+  <div className="date-card fulfilled-date-card">
+    <span className="date-label">Fulfilled On</span>
+    <span className="date-value">{formatDate(selectedOrder.fulfilled_at)}</span>
+  </div>
+)}
+
+{selectedOrder.status === "Cancelled" && (
+  <div className="cancelled-info">
+    {selectedOrder.cancelledAt && (
+      <div className="date-card cancelled-date-card">
+        <span className="date-label">Cancelled On</span>
+        <span className="date-value">{formatDate(selectedOrder.cancelledAt)}</span>
+      </div>
+    )}
+  </div>
+)}
+
+
               </div>
+
+              
+{selectedOrder.cancelled_reason && (
+  <div className="cancelled-reason-card">
+    <span className="reason-label">Reason</span>
+    <span className="reason-text">{selectedOrder.cancelled_reason}</span>
+  </div>
+)}
+
 
               <div className="order-total-section">
                 <span className="total-label">Total Amount</span>
@@ -1542,8 +1643,137 @@ const Orders = () => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
-export default Orders;
+      {showCancelModal && (
+              <div className="modal-overlay">
+                <div className="modal-content" style={{ maxWidth: "500px" }}>
+                  <div className="modal-header">
+                    <h3>Cancel Order</h3>
+                    <button
+                      className="close-btn"
+                      onClick={() => {
+                        setShowCancelModal(false);
+                        setCancelReason("");
+                        setOrderToCancel(null);
+                      }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ marginBottom: "15px", color: "#666" }}>
+                      Please provide a reason for cancelling this order:
+                    </p>
+                    <textarea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Enter cancellation reason..."
+                      rows="4"
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "14px",
+                        resize: "vertical",
+                      }}
+                    />
+                  </div>
+                  <div
+                    className="modal-footer"
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setShowCancelModal(false);
+                        setCancelReason("");
+                        setOrderToCancel(null);
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#f0f0f0",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleCancelReasonSubmit}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#dc3545",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+      
+            {showCancelConfirm && (
+              <div className="modal-overlay">
+                <div className="modal-content" style={{ maxWidth: "400px" }}>
+                  <div className="modal-header">
+                    <h3>Confirm Cancellation</h3>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ marginBottom: "10px" }}>
+                      Are you sure you want to cancel this order?
+                    </p>
+                    <p style={{ fontSize: "14px", color: "#666" }}>
+                      <strong>Reason:</strong> {cancelReason}
+                    </p>
+                  </div>
+                  <div
+                    className="modal-footer"
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <button
+                      onClick={() => handleCancelConfirm(false)}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#f0f0f0",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      No
+                    </button>
+                    <button
+                      onClick={() => handleCancelConfirm(true)}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#dc3545",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Yes, Cancel Order
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+      
+      export default Orders;

@@ -94,11 +94,13 @@ const orderSchema = new mongoose.Schema(
     awb_number: String,
     payment_status: String,
     payment_reference: String,
+    payment_proof: String,
     advance_paid: Number,
     fulfilled_at: Date,
     fulfilled_by: String,
-    cancelled_at: Date,
-    cancelled_reason: String
+    cancelledAt: Date,
+    cancelled_reason: String,
+    cancelledBy: String
   }, 
   { timestamps: true }
 );

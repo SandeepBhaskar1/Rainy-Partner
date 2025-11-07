@@ -133,7 +133,6 @@ export default function JobsScreen() {
         },
       });
       const { jobs } = await response.json();
-      console.log("Fetched Pending Jobs Response:", jobs);
       
       setPendingJobs(jobs || []);
     } catch (error) {
@@ -169,7 +168,6 @@ export default function JobsScreen() {
       }
       
       const data = await response.json();
-      console.log("Fetched Completed Jobs Response:", data);
       setCompletedJobs(data.jobs || []);
     } catch (error) {
       console.error('Error fetching completed jobs:', error);
@@ -266,7 +264,6 @@ export default function JobsScreen() {
           });
 
           if (!result.canceled) {
-            console.log('Image Picked:', result.assets[0], type);
             const file = await validateAndSetImage(result.assets[0], type);
             if (file) {
               await handleUpload(type, file);
@@ -316,8 +313,6 @@ export default function JobsScreen() {
       return;
     }
 
-    console.log('Starting upload for:', docType, file);
-
     try {
       const uploadUrlResponse = await axios.post(
         `${BACKEND_URL}/uploadurl`,
@@ -327,8 +322,6 @@ export default function JobsScreen() {
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      console.log('Got signed URL response:', uploadUrlResponse.data);
       const signedUrl = uploadUrlResponse.data.url;
 
       if (!signedUrl) {
@@ -340,9 +333,7 @@ export default function JobsScreen() {
       const uploadedUrl = await uploadToS3(file.uri, signedUrl, file.type);
 
       if (uploadedUrl) {
-        console.log('File Uploaded Successfully:', uploadedUrl);
         const s3Key = extractS3Key(uploadedUrl);
-        console.log('Extracted S3 Key:', s3Key);
         
         setCompletionImages(prev => {
           const updated = {
@@ -423,8 +414,6 @@ export default function JobsScreen() {
         warranty_card_image_key: completionImages.warrantyCard,
         installation_image_key: completionImages.installation,
       };
-
-      console.log("Submitting payload:", payload);
 
       const response = await axios.post(
         `${BACKEND_URL}/plumber/jobs/submit-completion`,
@@ -573,7 +562,6 @@ export default function JobsScreen() {
             <TouchableOpacity
               style={styles.completeButton}
               onPress={() => {
-                console.log("Clicking complete button for job:", job.id);
                 openCompletionModal(job.id);
               }}
             >

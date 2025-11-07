@@ -112,7 +112,6 @@ router.post(
 );
 
 router.get('/profile', verifyCoordinateToken, async (req, res) => {
-  // req.user should contain the coordinator ID from the token
   const coordinator = await User.findById(req.user.id);
   res.json(coordinator);
 });
@@ -162,6 +161,22 @@ router.get('/post-leads', verifyCoordinateToken, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
+router.put('/plumber/:id/delete', verifyCoordinateToken, asyncHandler(async (req, res) => {
+  const plumber = await User.findOne({ _id: req.params.id, role: 'PLUMBER' });
+
+  if (!plumber) {
+    return res.status(404).json({ message: 'Plumber not found' });
+  }
+
+  plumber.is_active = false;
+  plumber.kyc_status = 'deleted';
+  plumber.deleted_at = new Date();
+  plumber.deleted_by = req.user.id;
+  await plumber.save();
+
+  res.json({ message: 'Plumber marked as deleted successfully' });
+}));
 
 router.put('/:leadId/assign', verifyCoordinateToken, async (req, res) => {
   try {
@@ -396,7 +411,8 @@ router.put(
     }
 
     const { orderId } = req.params;
-    const { status, awb_number, fulfilled_at } = req.body;
+    const { status, awb_number, fulfilled_at, cancelledAt, cancelledBy, cancelled_reason } = req.body;
+    const userId = req.user?.id || req.user?._id
 
     const order = await Order.findOne({ _id: orderId });
 
@@ -413,12 +429,22 @@ router.put(
       order.fulfilled_at = new Date(fulfilled_at);
     }
 
+    
+    if (order.status === "Cancelled"){
+      order.cancelled_reason = cancelled_reason;
+      order.cancelledAt = cancelledAt || Date.now();
+      order.cancelledBy = cancelledBy || userId;
+    }
+
     await order.save();
 
     res.json({
       message: "Order status updated successfully",
       order_id: orderId,
       status,
+      cancelledAt,
+      cancelled_reason,
+      cancelled_reason
     });
   })
 );

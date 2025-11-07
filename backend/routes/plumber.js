@@ -11,7 +11,6 @@ const { token } = require('morgan');
 
 const router = express.Router();
 
-// Get plumber profile
 router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
   const user = await User.findById(req.user.user_id);
 
@@ -19,9 +18,9 @@ router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
     return res.status(404).json({ detail: 'Plumber not found' });
   }
 
-  // Return selected fields if needed
   const profile = {
     name: user.name,
+    user_id: user.user_id,
     phone: user.phone,
     email: user.email,
     kyc_status: user.kyc_status,
@@ -40,13 +39,14 @@ router.get('/profile', verifyPlumberToken, asyncHandler(async (req, res) => {
   console.log(user.service_area_pin);
 }));
 
-// Update plumber profile
 router.put('/profile', verifyPlumberToken, [
-  body('name').optional().trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
   body('email').optional().isEmail().withMessage('Please provide a valid email'),
   body('address.city').optional().trim(),
   body('address.state').optional().trim(),
-  body('address.pin').optional().matches(/^\d{6}$/).withMessage('PIN must be 6 digits')
+  body('address.pin').optional().matches(/^\d{6}$/).withMessage('PIN must be 6 digits'),
+  body('experience').optional().isInt({ min: 0 }).withMessage('Experience must be a non-negative integer'),
+  body('tools').optional().isArray().withMessage('Tools must be an array of strings'),
+  body('service_area_pin').optional().isArray().withMessage('Service area PINs must be an array of strings')
 ], asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -56,20 +56,23 @@ router.put('/profile', verifyPlumberToken, [
     });
   }
 
-  const user = await User.findOne({ id: req.user.user_id });
+  console.log("Decoded token user:", req.user);
+  const user = await User.findOne({ _id: req.user.user_id });
   
   if (!user) {
     return res.status(404).json({ detail: 'Plumber not found' });
   }
 
-
-  // Update allowed fields
-  const allowedFields = ['name', 'email', 'address', 'experience', 'tools'];
-  allowedFields.forEach(field => {
-    if (req.body[field] !== undefined) {
+  const allowedFields = ['email', 'address', 'experience', 'tools', 'service_area_pin'];
+for (const field of allowedFields) {
+  if (req.body[field] !== undefined) {
+    if (field === 'address' && typeof req.body.address === 'object') {
+      user.address = { ...user.address, ...req.body.address };
+    } else {
       user[field] = req.body[field];
     }
-  });
+  }
+}
 
   await user.save();
   res.json({ message: 'Profile updated successfully', profile: user.getProfile() });
@@ -78,7 +81,6 @@ router.put('/profile', verifyPlumberToken, [
 
 router.get('/stats', async (req, res) => {
   try {
-    // Fetch plumbers count and KYC status directly from MongoDB
     const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
     const approved = plumbers.filter(p => p.kyc_status === 'approved').length;
     const pending = plumbers.filter(p => p.agreement_status === true && p.kyc_status === 'pending' ).length;
@@ -505,23 +507,25 @@ router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(as
   });
 }));
 
-router.get('/coordinator/:id',verifyPlumberToken, async (req, res) => {
-  try{
-    const {coordinator_id} = req.params.id;
+router.get('/coordinator/:id', verifyPlumberToken, async (req, res) => {
+  try {
+    const coordinatorId = req.params.id;
 
-    const coordinator = await User.findOne(coordinator_id)
-    if (!coordinator) return res.status(404).json({message: 'Coordinator doesnt exist.'});
+    const coordinator = await User.findOne({ _id: coordinatorId, role: 'COORDINATOR' });
 
-    res.status(201).json({
+    if (!coordinator) {
+      return res.status(404).json({ message: 'Coordinator not found' });
+    }
+
+    res.status(200).json({
       name: coordinator.name,
       phone: coordinator.phone,
-    })
-
-  } catch(error){
-    console.error('Error fetching coordinator details', error);
-    
-    return res.status(500).json({message: 'Server Error'})
+    });
+  } catch (error) {
+    console.error('Error fetching coordinator details:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 });
+
 
 module.exports = router;

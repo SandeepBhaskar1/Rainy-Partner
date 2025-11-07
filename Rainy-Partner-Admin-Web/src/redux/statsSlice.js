@@ -1,13 +1,11 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
-
-const BASEURL = import.meta.env.VITE_APP_BACKEND_URL;
+import api from "../api/axiosInstence";
 
 export const fetchStats = createAsyncThunk(
   "stats/fetchStats",
   async (_, { rejectWithValue }) => {
     try {
-      const res = await axios.get(`${BASEURL}/plumber/stats`);
+      const res = await api.get(`/plumber/stats`);
       return res.data; 
     } catch (err) {
       return rejectWithValue(
@@ -45,8 +43,6 @@ const statsSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchStats.fulfilled, (state, action) => {
-        console.log('Stats API Response:', action.payload);
-        
         state.loading = false;
         state.hasFetched = true;
         state.plumbers = action.payload.plumbers || state.plumbers;

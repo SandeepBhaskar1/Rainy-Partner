@@ -203,7 +203,6 @@ class TranslationService {
       );
       await AsyncStorage.multiRemove(translationKeys);
       this.cache.clear();
-      console.log('Translation cache cleared successfully');
     } catch (error) {
       console.error('Error clearing cache:', error);
     }

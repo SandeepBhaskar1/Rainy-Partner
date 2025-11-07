@@ -16,10 +16,20 @@ import CoOrdinators from './pages/CoOrdinators/CoOrdinators';
 import CoordinatorLogin from './pages/Login/CoordinatorLogin';
 import CoordinatorPlumber from './pages/Plumbers/CoordinatorPlumber';
 import ForgotPassword from './pages/Login/ForgotPassword';
+import { useAuth } from './context/AuthContext';
 
 const PrivateRoute = ({ children }) => {
-  const token = localStorage.getItem('authToken');
-  return token ? children : <Navigate to="/login" />;
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div style={{ textAlign: "center", marginTop: "40px" }}>Checking session...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
 };
 
 const App = () => {

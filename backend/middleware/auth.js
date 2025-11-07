@@ -68,7 +68,7 @@ const verifyPlumberToken = async (req, res, next) => {
 
 const verifyAdminToken = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.cookies.access_token;
 
     if (!token) {
       return res.status(401).json({ detail: 'Access token is missing' });
@@ -98,7 +98,7 @@ const verifyAdminToken = async (req, res, next) => {
 
 const verifyCoordinateToken = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.cookies.access_token;
     if(!token){
       return res.status(401).json({details: 'Access token is missing'});
     }
@@ -151,6 +151,14 @@ const generateAdminToken = (user) => {
   );
 };
 
+const generateAdminRefreshToken = (user) => {
+  return jwt.sign(    
+    { id: user._id, role: user.role },
+    process.env.JWT_REFRESH_SECRET_KEY,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d' }
+  );
+};
+
 
 module.exports = {
   verifyToken,
@@ -160,5 +168,6 @@ module.exports = {
   isPlumber,
   isAdmin,
   generateToken,
-  generateAdminToken
+  generateAdminToken,
+  generateAdminRefreshToken
 };

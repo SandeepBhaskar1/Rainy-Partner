@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, Users, FileText, MapPin, Package, Settings, ClipboardList } from 'lucide-react';
 import './Sidebar.css';
+import axios from 'axios';
+import api from '../../api/axiosInstence';
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -9,7 +11,7 @@ const Sidebar = () => {
   const [searchValue, setSearchValue] = useState('');
   
   const userRole = useMemo(() => {
-    const storedUser = localStorage.getItem("user");
+    const storedUser = sessionStorage.getItem("user");
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
@@ -22,16 +24,19 @@ const Sidebar = () => {
     return null;
   }, []);
 
-const handleLogout = () => {
+const handleLogout = async () => {
   try {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-
-    navigate('/login');
-
-    console.log('Logged out successfully');
+    await api.post(
+      `/admin-logout`,
+      {},
+    );
+    
+    sessionStorage.removeItem('user');
+    navigate('/login', { replace: true });
   } catch (error) {
     console.error('Error occurred while logging out:', error);
+    sessionStorage.removeItem('user');
+    navigate('/login', { replace: true });
   }
 };
 
@@ -45,7 +50,7 @@ const handleLogout = () => {
     { name: 'Installations', icon: MapPin, path: '/admin-installations', adminOnly: true },
     { name: 'Installations', icon: MapPin, path: '/installations', coordinatorOnly: true },
     { name: 'Orders', icon: Package, path: '/admin-orders', adminOnly: true },
-    { name: 'CoordOrders', icon: Package, path: '/orders', coordinatorOnly: true },
+    { name: 'Orders', icon: Package, path: '/orders', coordinatorOnly: true },
     { name: 'Settings', icon: Settings, path: '/settings' }
   ];
 
@@ -106,7 +111,6 @@ const handleLogout = () => {
         <div className='logout-button'>
           <button onClick={handleLogout}>Logout</button>
         </div>
-      {/* Quick Tip */}
       <div className="quick-tip">
         <div className="tip-title">Quick Tip</div>
         <div className="tip-content">

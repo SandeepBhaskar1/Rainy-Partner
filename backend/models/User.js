@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
+const userCounter = require('./userCounter');
 
 const userSchema = new mongoose.Schema({
+  user_id: {
+    type: String,
+    unique: true,
+    required: true
+  },
   phone: {
     type: String,
     required: true,
@@ -36,7 +42,7 @@ const userSchema = new mongoose.Schema({
   },
   kyc_status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'deleted'],
     default: 'pending'
   },
   coordinator_id: {
@@ -56,7 +62,7 @@ const userSchema = new mongoose.Schema({
   },
   service_area_pin : [{type: String}],
   experience: { type: Number },
-  tools: { type: String },
+  tools: [{ type: String }],
   profile: { type: String },
   aadhaar_front: { type: String },
   aadhaar_back: { type: String },
@@ -93,6 +99,8 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now()
   },
+  deleted_at: { type: Date },
+  deleted_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   last_login: Date,
   is_active: {
     type: Boolean,
@@ -102,14 +110,49 @@ const userSchema = new mongoose.Schema({
   otpExpiry: {type: Date}
 });
 
-userSchema.pre('save', function(next) {
+userSchema.pre("validate", async function (next) {
   if (!this.isNew) {
     this.updated_at = new Date();
+    return next();
   }
-  next();
+
+  try {
+    // use the imported Counter model directly
+    const counter = await userCounter.findOneAndUpdate(
+      { role: this.role },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+
+    let prefix = "";
+    let paddedSeq = "";
+
+    switch (this.role) {
+      case "ADMIN":
+        prefix = "ADM";
+        paddedSeq = counter.seq.toString().padStart(2, "0"); 
+        break;
+      case "COORDINATOR":
+        prefix = "CRD";
+        paddedSeq = counter.seq.toString().padStart(3, "0"); 
+        break;
+      case "PLUMBER":
+        prefix = "PLB";
+        paddedSeq = counter.seq.toString().padStart(6, "0"); 
+        break;
+      default:
+        prefix = "USR";
+        paddedSeq = counter.seq.toString().padStart(6, "0");
+    }
+
+    this.user_id = `${prefix}${paddedSeq}`;
+    this.updated_at = new Date();
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
-// Instance method to check if user needs onboarding
 userSchema.methods.needsOnboarding = function() {
   return this.needs_onboarding || this.kyc_status === 'pending';
 };
@@ -117,7 +160,7 @@ userSchema.methods.needsOnboarding = function() {
 
 userSchema.methods.canWorkNow = function() {
   if (this.role !== 'COORDINATOR') {
-    return true; // Non-coordinators can work anytime
+    return true; 
   }
   
   const now = new Date();
@@ -126,23 +169,18 @@ userSchema.methods.canWorkNow = function() {
   return currentHour >= this.working_hours.start && currentHour < this.working_hours.end;
 };
 
-// Instance method to check if user can approve KYC
 userSchema.methods.canApproveKYC = function() {
   return this.role === 'ADMIN';
 };
 
-// Instance method to check if user can create coordinators
 userSchema.methods.canCreateCoordinator = function() {
   return this.role === 'ADMIN';
 };
 
-// Instance method to get accessible plumbers for a user
 userSchema.methods.getAccessiblePlumbers = async function() {
   if (this.role === 'ADMIN') {
-    // Admin can see all plumbers
     return await mongoose.model('User').find({ role: 'PLUMBER' });
   } else if (this.role === 'COORDINATOR') {
-    // Coordinator can only see assigned plumbers
     return await mongoose.model('User').find({
       _id: { $in: this.assigned_plumbers },
       role: 'PLUMBER'
@@ -151,10 +189,10 @@ userSchema.methods.getAccessiblePlumbers = async function() {
   return [];
 };
 
-// Instance method to get user profile
 userSchema.methods.getProfile = function() {
   return {
     id: this._id,
+    user_id: this.user_id,
     name: this.name,
     phone: this.phone,
     email: this.email,
@@ -176,7 +214,7 @@ userSchema.methods.getProfile = function() {
     trust: this.trust,
     needs_onboarding: this.needs_onboarding,
     created_at: this.created_at,
-  };
+  }
 
   if (this.role === 'COORDINATOR') {
     profile.working_hours = this.working_hours;
@@ -184,17 +222,18 @@ userSchema.methods.getProfile = function() {
   }
 };
 
-// Static method to find by phone
 userSchema.statics.findByPhone = function(phone) {
   return this.findOne({ phone });
 };
 
-// Static method to find plumbers only
+userSchema.statics.findByUserId = function(user_id) {
+  return this.findOne({ user_id });
+}
+
 userSchema.statics.findPlumbers = function(filter = {}) {
   return this.find({ ...filter, role: 'PLUMBER' });
 };
 
-// Static method to find admins only
 userSchema.statics.findAdmins = function(filter = {}) {
   return this.find({ ...filter, role: 'ADMIN' });
 };

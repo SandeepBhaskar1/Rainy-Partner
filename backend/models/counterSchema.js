@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const counterSchema = new mongoose.Schema({
-  date: { type: String, unique: true }, // e.g., 20251021
+  date: { type: String, unique: true }, 
   seq: { type: Number, default: 0 },
 });
 

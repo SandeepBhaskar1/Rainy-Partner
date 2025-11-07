@@ -3,17 +3,20 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchStats } from '../../redux/statsSlice';
 import { Loader } from 'lucide-react';
 import Stats from './Stats/Stats';
+import axios from 'axios';
 import TodayRevenue from './totalRevenue';
 import RevenueGraph from './RevenueGraph';
 import KYCPieChart from './PieChart';
 import InstallationQueue from './InstallationQueue/InstallationQueue';
 import './Home.css';
+import api from '../../api/axiosInstence';
 
 const Home = () => {
   const dispatch = useDispatch();
   const { loading, hasFetched } = useSelector((state) => state.stats);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-
+  const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
+  
   useEffect(() => {
     if (!hasFetched) {
       dispatch(fetchStats());
@@ -25,6 +28,18 @@ const Home = () => {
       setIsInitialLoad(false);
     }
   }, [loading, hasFetched]);
+
+  useEffect(() => {
+  const checkAuth = async () => {
+    try {
+      const response = await api.get(`/auth/verify`);
+    } catch (error) {
+      console.error('Authentication check failed:', error);
+      window.location.href = '/login';
+    }
+  };
+  checkAuth();
+}, []);
 
   if (isInitialLoad && loading) {
     return (

@@ -217,9 +217,6 @@ const submitOrder = async () => {
       billing: billingIsSameAsShipping ? shippingAddress : billingAddress,
     };
 
-    console.log('Order Data:', JSON.stringify(orderData, null, 2));
-    console.log('Token:', token);
-
     const response = await axios.post(
       `${BACKEND_URL}/plumber/place-order`,
       orderData,
@@ -228,8 +225,6 @@ const submitOrder = async () => {
       }
     );
     const result = await response.data;
-    console.log(result);
-    
 
     Alert.alert(
       t('common.save'),

@@ -3,7 +3,6 @@ const router = express.Router();
 const User = require('../models/User');
 
 router.post('/', async (req, res) => {
-  console.log('Received Data', req.body);
 
   try {
     const {
@@ -25,7 +24,7 @@ router.post('/', async (req, res) => {
       license_front,
       license_back, } = req.body;
 
-    if (!name || !address || !city || !pin || !district || !state || !service_area_pin || !experience || !tools || !aadhaar_number || !plumber_license_number || !profile || !aadhaar_front || !aadhaar_back || !license_front || !license_back) {
+    if (!name || !address || !city || !pin || !district || !state || !service_area_pin || !experience || !tools || !aadhaar_number  || !profile || !aadhaar_front || !aadhaar_back ) {
       return res.status(400).json({ message: 'All fields are required.' })
     }
 

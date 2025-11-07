@@ -38,13 +38,11 @@ export default function LoginScreen({ navigation }) {
     setIsLoading(true);
     try {
       const response = await requestOtp(identifier);
-      console.log("OTP request response:", response);
 
       if (response?.otp || response?.data?.otp) {
         setOtpSent(true);
         const otp = response?.data?.otp || response?.otp || "N/A";
         Alert.alert("Success", `OTP sent successfully.`);
-        console.log("OTP Sent:", otp);
       } else {
         Alert.alert("Error", "Failed to send OTP");
       }

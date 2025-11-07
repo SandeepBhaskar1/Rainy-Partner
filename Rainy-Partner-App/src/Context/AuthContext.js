@@ -62,14 +62,8 @@ export function AuthProvider({ children }) {
 
     const requestOtp = async (identifier) => {
         try {
-            console.log('Sending OTP request to:', `${BACKEND_URL_LOCAL}/auth/send-otp`, 'with identifier:', identifier);
 
             const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/send-otp`, { identifier });
-
-            console.log('OTP API response:', response.data);
-
-            const otp = response.data?.otp;
-            console.log('OTP from response:', otp);
 
             return response.data;
         } catch (error) {
@@ -96,8 +90,6 @@ export function AuthProvider({ children }) {
 
     const loginWithOTP = async (identifier, otp) => {
         try {
-            console.log('Verifying OTP for identifier:', identifier, 'OTP:', otp);
-
             const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/verify-otp`, {
                 identifier,
                 otp
@@ -123,7 +115,6 @@ export function AuthProvider({ children }) {
             setUser(null);
             setToken(null);
             navigate('login');
-            console.log('User logged out');
         } catch (error) {
             console.error('Logout error:', error);
         }
@@ -134,7 +125,6 @@ export function AuthProvider({ children }) {
 
         const initAuth = async () => {
             if (mounted) {
-                console.log('Initializing auth status');
                 await checkAuthStatus();
             }
         };

@@ -19,12 +19,14 @@ const Login = () => {
       const res = await axios.post(`${BACKEND_URL}/auth/admin-login`, {
         email,
         password,
-      });
+      }, {withCredentials: true});
+
+          console.log("Full response:", res); // 🔍 Add this
+    console.log("Response data:", res.data); // 🔍 Add this
+    console.log("Success value:", res.data.success);
 
       if (res.data.success) {
-        const { token, admin } = res.data;
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("user", JSON.stringify(admin));
+        sessionStorage.setItem("user", JSON.stringify(res.data.admin));
         navigate("/");
       } else {
         setError("Invalid credentials");
@@ -32,7 +34,7 @@ const Login = () => {
     } catch (err) {
       console.error(err);
       setError(
-        err.response?.data?.message || "Login failed. Please try again."
+        err.response?.data?.message || "Invalid Credentials."
       );
     }
   };
@@ -52,7 +54,6 @@ const Login = () => {
         <div className="login-grid">
           
 
-          {/* Right Side - Login Form with Blur Container */}
           <div className="login-form-wrapper">
             <div className="login-blur-container">
             
@@ -62,7 +63,6 @@ const Login = () => {
                 <p className="form-subtitle">Enter your credentials to access the admin dashboard</p>
               </div>
 
-              {/* Error Message */}
               {error && (
                 <div className="error-message">
                   {error}

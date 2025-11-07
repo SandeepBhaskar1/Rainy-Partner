@@ -19,7 +19,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import i18n from "../i18n";
 import { useLanguage } from "../context/LanguageContext";
 import { useAuth } from "../src/Context/AuthContext";
 
@@ -78,7 +77,6 @@ export default function Onboarding() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (response.data.success) {
-        console.log(response.data.url);
         return response.data.url;
       } else {
         throw new Error(response.data.message);
@@ -214,7 +212,6 @@ export default function Onboarding() {
           });
 
           if (!result.canceled) {
-            console.log("Image Picked:", result.assets[0], type);
             const file = await validateAndSetImage(result.assets[0], type);
             if (file) {
               await handleUpload(type, file);
@@ -305,7 +302,6 @@ export default function Onboarding() {
 
     try {
       const token = await SecureStore.getItemAsync("access_token");
-      console.log("Token retrieved for upload:", !!token);
 
       if (!token) {
         console.warn("Token not found in SecureStore");
@@ -353,10 +349,8 @@ export default function Onboarding() {
       const uploadedUrl = await uploadToS3(file.uri, signedUrl, file.type);
 
       if (uploadedUrl) {
-        console.log("File Uploaded Successfully:", uploadedUrl);
         const s3Key = extractS3Key(uploadedUrl);
         updateFormData(docType, s3Key);
-        console.log("S3 Key:", s3Key);
       }
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -454,7 +448,6 @@ export default function Onboarding() {
       );
 
       const result = response.data;
-      console.log("Onboarding Successful:", result);
 
       if (result.token) {
         await SecureStore.setItemAsync("access_token", result.token);

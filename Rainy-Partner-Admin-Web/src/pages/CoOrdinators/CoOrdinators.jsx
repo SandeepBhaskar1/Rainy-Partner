@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./CoOrdinators.css";
 import { Loader } from "lucide-react";
-
+import api from "../../api/axiosInstence";
 const CoOrdinators = () => {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -15,15 +15,11 @@ const CoOrdinators = () => {
   const [coordinators, setCoordinators] = useState([]);
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
 
-  // 🔹 Fetch coordinators list
   const fetchCoordinators = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("authToken");
-      const res = await axios.get(`${BACKEND_URL}/admin/co-ordinators`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const res = await api.get(`/admin/co-ordinators`, {
+        withCredentials: true,
       });
       setCoordinators(res.data.coordinators || []);
     } catch (err) {
@@ -37,33 +33,23 @@ const CoOrdinators = () => {
     fetchCoordinators();
   }, []);
 
-  // 🔹 Handle form input changes
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // 🔹 Handle submit
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     try {
-      const token = localStorage.getItem("authToken");
-
-      const res = await axios.post(
-        `${BACKEND_URL}/admin/co-ordinator-registeration`,
+      const res = await api.post(
+        `/admin/co-ordinator-registeration`,
         formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
       );
 
       alert(res.data.message || "Coordinator created successfully!");
       setShowModal(false);
       setFormData({ name: "", phone: "", email: "", password: "" });
 
-      // Refresh table after adding new coordinator
       fetchCoordinators();
     } catch (err) {
       console.error(err);
@@ -101,9 +87,9 @@ const CoOrdinators = () => {
               </tr>
             </thead>
             <tbody>
-              {coordinators.map((coord, index) => (
+              {coordinators.map((coord) => (
                 <tr key={coord._id}>
-                  <td>{coord._id}</td>
+                  <td>{coord.user_id}</td>
                   <td>{coord.name}</td>
                   <td>{coord.phone}</td>
                   <td>{coord.email}</td>
@@ -117,7 +103,6 @@ const CoOrdinators = () => {
         )}
       </div>
 
-      {/* 🔹 Add Coordinator Modal */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal-container">

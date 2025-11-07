@@ -11,6 +11,7 @@ import {
   CircleCheckBig,
 } from "lucide-react";
 import "./Orders.css";
+import api from "../../api/axiosInstence";
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
@@ -20,6 +21,10 @@ const Orders = () => {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -41,8 +46,7 @@ const Orders = () => {
     shipping_state: "",
     shipping_pin: "",
     sameAsBilling: false,
-    model: "",
-    quantity: 1,
+    products: [{ model: "", quantity: 1 }],
   });
 
   const backendUrl = import.meta.env.VITE_APP_BACKEND_URL;
@@ -56,14 +60,6 @@ const Orders = () => {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem("authToken");
-
-      if (!token) {
-        setError("Authentication required. Please login.");
-        redirectToLogin();
-        return;
-      }
-
       const params = {
         page: pagination.page,
         limit: pagination.limit,
@@ -75,16 +71,11 @@ const Orders = () => {
 
       const [ordersResponse, plumbersResponse, productsResponse] =
         await Promise.allSettled([
-          axios.get(`${backendUrl}/admin/orders`, {
-            headers: { Authorization: `Bearer ${token}` },
+          api.get(`/admin/orders`, {
             params,
           }),
-          axios.get(`${backendUrl}/admin/plumbers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${backendUrl}/products`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          api.get(`/admin/plumbers`),
+          api.get(`/products`),
         ]);
 
       let ordersData = [];
@@ -106,6 +97,8 @@ const Orders = () => {
         const plumbersData = plumbersResponse.value.data;
         const plumbersList = plumbersData.plumbers || plumbersData || [];
         setPlumbers(plumbersList);
+        console.log(plumbersList);
+        
 
         plumbersList.forEach((plumber) => {
           const plumberId = plumber._id || plumber.id;
@@ -147,8 +140,6 @@ const Orders = () => {
   };
 
   const redirectToLogin = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("admin");
     setTimeout(() => {
       window.location.href = "/login";
     }, 2000);
@@ -157,17 +148,6 @@ const Orders = () => {
   const getFilteredOrders = () => {
     if (!Array.isArray(orders)) return [];
     return orders;
-  };
-
-  const getStatusBadgeClass = (status) => {
-    const statusMap = {
-      pending: "badge-pending",
-      confirmed: "badge-confirmed",
-      shipped: "badge-shipped",
-      delivered: "badge-delivered",
-      cancelled: "badge-cancelled",
-    };
-    return statusMap[status?.toLowerCase()] || "badge-pending";
   };
 
   const getProductNameById = (productId) => {
@@ -319,6 +299,116 @@ const Orders = () => {
     }
   };
 
+  const handleStatusChange = async (order, newStatus) => {
+    if (newStatus === "Cancelled") {
+      setOrderToCancel(order);
+      setShowCancelModal(true);
+      return;
+    }
+
+    try {
+      const orderId = order._id || order.id;
+
+      await api.put(
+        `/admin/orders/${orderId}/status`,
+        { status: newStatus }
+      );
+
+      setOrders((prevOrders) =>
+        prevOrders.map((o) =>
+          o._id === order._id || o.id === order.id
+            ? { ...o, status: newStatus }
+            : o
+        )
+      );
+
+      alert("Status updated successfully!");
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      const errorMsg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Failed to update status. Try again.";
+      alert(errorMsg);
+    }
+  };
+
+  const handleProductChange = (index, field, value) => {
+    if (!Array.isArray(newOrder.products)) return;
+    const updatedProducts = [...newOrder.products];
+    updatedProducts[index][field] = value;
+    setNewOrder((prev) => ({ ...prev, products: updatedProducts }));
+  };
+
+  const addProductRow = () => {
+    setNewOrder((prev) => ({
+      ...prev,
+      products: Array.isArray(prev.products)
+        ? [...prev.products, { model: "", quantity: 1 }]
+        : [{ model: "", quantity: 1 }],
+    }));
+  };
+
+  const removeProductRow = (index) => {
+    setNewOrder((prev) => ({
+      ...prev,
+      products: Array.isArray(prev.products)
+        ? prev.products.filter((_, i) => i !== index)
+        : [],
+    }));
+  };
+
+  const handleCancelReasonSubmit = () => {
+    if (!cancelReason.trim()) {
+      alert("Please provide a cancellation reason");
+      return;
+    }
+    setShowCancelModal(false);
+    setShowCancelConfirm(true);
+  };
+
+  const handleCancelConfirm = async (confirmed) => {
+    if (!confirmed) {
+      setShowCancelConfirm(false);
+      setCancelReason("");
+      setOrderToCancel(null);
+      return;
+    }
+
+    try {
+      await api.put(
+        `/admin/orders/${orderToCancel._id}/status`,
+        {
+          status: "Cancelled",
+          cancelled_reason: cancelReason.trim(),
+        },
+      );
+
+      setOrders((prevOrders) =>
+        prevOrders.map((o) =>
+          o._id === orderToCancel._id
+            ? {
+                ...o,
+                status: "Cancelled",
+                cancelled_reason: cancelReason.trim(),
+              }
+            : o
+        )
+      );
+
+      alert("Order cancelled successfully");
+    } catch (err) {
+      console.error("Failed to cancel order:", err);
+      alert(
+        err.response?.data?.message || "Failed to cancel order. Try again."
+      );
+    } finally {
+      setShowCancelConfirm(false);
+      setCancelReason("");
+      setOrderToCancel(null);
+    }
+  };
+
   const getSelectedProduct = () => {
     return products.find(
       (p) =>
@@ -328,13 +418,19 @@ const Orders = () => {
   };
 
   const calculateTotal = () => {
-    const product = getSelectedProduct();
-    if (!product || !product.mrp) {
+    if (!Array.isArray(newOrder.products) || newOrder.products.length === 0)
       return 0;
-    }
-    const quantity = Number(newOrder.quantity) || 1;
-    const price = Number(product.mrp) || 0;
-    return price * quantity;
+
+    return newOrder.products.reduce((total, item) => {
+      const product = products.find(
+        (p) => String(p.code) === String(item.model)
+      );
+      if (!product) return total;
+
+      const qty = Number(item.quantity) || 1;
+      const price = Number(product.mrp) || 0;
+      return total + qty * price;
+    }, 0);
   };
 
   const handleCreateOrder = async (e) => {
@@ -356,14 +452,12 @@ const Orders = () => {
       return;
     }
 
-    // Validate phone number (10 digits)
     const phoneRegex = /^[0-9]{10}$/;
     if (!phoneRegex.test(newOrder.client_phone.replace(/\s/g, ""))) {
       alert("Please enter a valid 10-digit phone number");
       return;
     }
 
-    // Validate billing address
     if (!newOrder.billing_address.trim()) {
       alert("Please enter billing address");
       return;
@@ -381,14 +475,12 @@ const Orders = () => {
       return;
     }
 
-    // Validate PIN code (6 digits)
     const pinRegex = /^[0-9]{6}$/;
     if (!pinRegex.test(newOrder.billing_pin)) {
       alert("Please enter a valid 6-digit PIN code for billing address");
       return;
     }
 
-    // Validate shipping address
     if (!newOrder.shipping_address.trim()) {
       alert("Please enter shipping address");
       return;
@@ -411,26 +503,38 @@ const Orders = () => {
       return;
     }
 
-    // Validate product and quantity
-    if (!newOrder.model) {
-      alert("Please select a model");
+    if (!Array.isArray(newOrder.products) || newOrder.products.length === 0) {
+      alert("Please add at least one product");
       return;
     }
 
-    if (!newOrder.quantity || newOrder.quantity < 1) {
-      alert("Please enter a valid quantity (minimum 1)");
-      return;
+    for (const [i, item] of newOrder.products.entries()) {
+      if (!item.model) {
+        alert(`Please select a model for product #${i + 1}`);
+        return;
+      }
+      if (!item.quantity || item.quantity < 1) {
+        alert(`Please enter a valid quantity (≥1) for product #${i + 1}`);
+        return;
+      }
     }
 
     try {
-      const token = localStorage.getItem("authToken");
       const product = getSelectedProduct();
-      console.log(token);
 
-      if (!product) {
-        alert("Selected product not found. Please select again.");
-        return;
-      }
+      const items = newOrder.products.map((item) => {
+        const product = products.find(
+          (p) => p.code?.toString() === item.model?.toString()
+        );
+
+        if (!product) throw new Error(`Product not found for ID ${item.model}`);
+
+        return {
+          product: product.code,
+          price: product.mrp,
+          quantity: Number(item.quantity),
+        };
+      });
 
       const orderData = {
         plumber_id: newOrder.plumber_id,
@@ -450,29 +554,17 @@ const Orders = () => {
           state: newOrder.shipping_state.trim(),
           pin: newOrder.shipping_pin.trim(),
         },
-        items: [
-          {
-            product:
-              product.code || product._id || product.id || product.product_id,
-            price: product.mrp,
-            quantity: Number(newOrder.quantity),
-          },
-        ],
-        total_amount: calculateTotal(),
+        items,
       };
 
-      // Show loading state
       const submitButton = e.target.querySelector('button[type="submit"]');
       if (submitButton) {
         submitButton.disabled = true;
         submitButton.textContent = "Creating Order...";
       }
 
-      await axios.post(`${backendUrl}/admin/admin-place-order`, orderData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/admin/admin-place-order`, orderData);
 
-      // Success - close modal and reset form
       alert("Order created successfully!");
       setShowCreateModal(false);
       setNewOrder({
@@ -489,10 +581,9 @@ const Orders = () => {
         shipping_pin: "",
         sameAsBilling: false,
         model: "",
-        quantity: 1,
+        products: [{ model: "", quantity: 1 }],
       });
 
-      // Refresh orders list
       fetchData();
     } catch (error) {
       console.error("Error creating order:", error);
@@ -502,7 +593,6 @@ const Orders = () => {
         "Failed to create order. Please try again.";
       alert(errorMessage);
 
-      // Re-enable button
       const submitButton = e.target.querySelector('button[type="submit"]');
       if (submitButton) {
         submitButton.disabled = false;
@@ -512,6 +602,23 @@ const Orders = () => {
   };
 
   const filteredOrders = getFilteredOrders();
+
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case "Order-Placed":
+        return "Order-Placed";
+      case "Payment-Completed":
+        return "Payment-Completed";
+      case "Dispatched":
+        return "Dispatched";
+      case "Fulfilled":
+        return "Fulfilled";
+      case "Cancelled":
+        return "Cancelled";
+      default:
+        return "";
+    }
+  };
 
   if (loading) {
     return (
@@ -575,7 +682,11 @@ const Orders = () => {
                     .filter((order) => order.status === "Order-Placed")
                     .map((order) => (
                       <tr key={order._id || order.id}>
-                        <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                        <td
+                          className="order-id"
+                          title={order._id || order.id}
+                          onClick={() => setSelectedOrder(order)}
+                        >
                           #{order.id || order._id || "N/A"}
                         </td>
                         <td className="order-date">
@@ -605,33 +716,9 @@ const Orders = () => {
                             className={`status-dropdown ${getStatusBadgeClass(
                               order.status
                             )}`}
-                            onChange={async (e) => {
-                              const newStatus = e.target.value;
-
-                              try {
-                                const token = localStorage.getItem("authToken");
-                                await axios.put(
-                                  `${backendUrl}/admin/orders/${order._id}/status`,
-                                  { status: newStatus },
-                                  {
-                                    headers: {
-                                      Authorization: `Bearer ${token}`,
-                                    },
-                                  }
-                                );
-
-                                setOrders((prevOrders) =>
-                                  prevOrders.map((o) =>
-                                    o._id === order._id
-                                      ? { ...o, status: newStatus }
-                                      : o
-                                  )
-                                );
-                              } catch (err) {
-                                console.error("Failed to update status:", err);
-                                alert("Failed to update status. Try again.");
-                              }
-                            }}
+                            onChange={(e) =>
+                              handleStatusChange(order, e.target.value)
+                            }
                           >
                             {[
                               "Order-Placed",
@@ -690,7 +777,11 @@ const Orders = () => {
                   .filter((order) => order.status === "Payment-Completed")
                   .map((order) => (
                     <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                      <td
+                        className="order-id"
+                        title={order._id || order.id}
+                        onClick={() => setSelectedOrder(order)}
+                      >
                         #{order.id || order._id || "N/A"}
                       </td>
                       <td className="order-date">
@@ -722,13 +813,9 @@ const Orders = () => {
                             const newStatus = e.target.value;
 
                             try {
-                              const token = localStorage.getItem("authToken");
-                              await axios.put(
-                                `${backendUrl}/admin/orders/${order._id}/status`,
-                                { status: newStatus },
-                                {
-                                  headers: { Authorization: `Bearer ${token}` },
-                                }
+                              await api.put(
+                                `/admin/orders/${order._id}/status`,
+                                { status: newStatus }
                               );
 
                               setOrders((prevOrders) =>
@@ -795,129 +882,125 @@ const Orders = () => {
             </thead>
             <tbody>
               {filteredOrders.filter((order) => order.status === "Dispatched")
-          .length > 0 ? (
-          filteredOrders
-            .filter((order) => order.status === "Dispatched")
-            .map((order) => (
-              <tr key={order._id || order.id}>
-                <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
-                  #{order.id || order._id || "N/A"}
-                </td>
-                <td className="order-date">
-                  {formatDate(order.created_at || order.createdAt)}
-                </td>
-                <td className="plumber-name">{getPlumberName(order)}</td>
-                <td className="customer-name">
-                  {getCustomerName(order)}
-                </td>
-                <td className="address">{getBillingAddress(order)}</td>
-                <td className="address">{getShippingAddress(order)}</td>
-                <td className="product-name">
-                  {getProductNames(order.items)} x
-                  {order.items?.length || 0}
-                </td>
-                <td className="amount">
-                  ₹
-                  {calculateOrderTotal(order.items).toLocaleString(
-                    "en-IN"
-                  )}
-                </td>
-                <td>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <input
-                      type="text"
-                      value={order.awb_number || ""}
-                      placeholder="Enter AWB Number"
-                      className="awb-input"
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        // update locally and mark as changed
-                        setOrders((prevOrders) =>
-                          prevOrders.map((o) =>
-                            o._id === order._id
-                              ? { ...o, awb_number: value, awb_changed: true }
-                              : o
-                          )
-                        );
-                      }}
-                    />
-
-                    {/* Show Save button only if AWB number changed */}
-                    {order.awb_changed && (
-                      <button
-                        className="save-awb-btn"
-                        onClick={async () => {
-                          const awbNumber = order.awb_number?.trim();
-                          if (!awbNumber) {
-                            alert(
-                              "Please enter an AWB number before saving."
-                            );
-                            return;
-                          }
-
-                          try {
-                            const token = localStorage.getItem("authToken");
-                            await axios.put(
-                              `${backendUrl}/admin/orders/${order._id}/status`,
-                              {
-                                awb_number: awbNumber,
-                                status: order.status,
-                              },
-                              {
-                                headers: {
-                                  Authorization: `Bearer ${token}`,
-                                },
-                              }
-                            );
-
-                            alert("AWB number saved successfully ✅");
-                            
-                            // Mark as saved (remove changed flag)
-                            setOrders((prevOrders) =>
-                              prevOrders.map((o) =>
-                                o._id === order._id
-                                  ? { ...o, awb_changed: false }
-                                  : o
-                              )
-                            );
-                          } catch (err) {
-                            console.error(
-                              "Failed to update AWB number:",
-                              err
-                            );
-                            alert(
-                              "Failed to update AWB number. Try again."
-                            );
-                          }
-                        }}
+                .length > 0 ? (
+                filteredOrders
+                  .filter((order) => order.status === "Dispatched")
+                  .map((order) => (
+                    <tr key={order._id || order.id}>
+                      <td
+                        className="order-id"
+                        title={order._id || order.id}
+                        onClick={() => setSelectedOrder(order)}
                       >
-                        Save
-                      </button>
-                    )}
-                  </div>
-                </td>
+                        #{order.id || order._id || "N/A"}
+                      </td>
+                      <td className="order-date">
+                        {formatDate(order.created_at || order.createdAt)}
+                      </td>
+                      <td className="plumber-name">{getPlumberName(order)}</td>
+                      <td className="customer-name">
+                        {getCustomerName(order)}
+                      </td>
+                      <td className="address">{getBillingAddress(order)}</td>
+                      <td className="address">{getShippingAddress(order)}</td>
+                      <td className="product-name">
+                        {getProductNames(order.items)} x
+                        {order.items?.length || 0}
+                      </td>
+                      <td className="amount">
+                        ₹
+                        {calculateOrderTotal(order.items).toLocaleString(
+                          "en-IN"
+                        )}
+                      </td>
+                      <td>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            flexDirection: "column",
+                            gap: "6px",
+                          }}
+                        >
+                          <input
+                            type="text"
+                            value={order.awb_number || ""}
+                            placeholder="Enter AWB Number"
+                            className="awb-input"
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setOrders((prevOrders) =>
+                                prevOrders.map((o) =>
+                                  o._id === order._id
+                                    ? {
+                                        ...o,
+                                        awb_number: value,
+                                        awb_changed: true,
+                                      }
+                                    : o
+                                )
+                              );
+                            }}
+                          />
+
+                          {order.awb_changed && (
+                            <button
+                              className="save-awb-btn"
+                              onClick={async () => {
+                                const awbNumber = order.awb_number?.trim();
+                                if (!awbNumber) {
+                                  alert(
+                                    "Please enter an AWB number before saving."
+                                  );
+                                  return;
+                                }
+
+                                try {
+                                  await api.put(
+                                    `/admin/orders/${order._id}/status`,
+                                    {
+                                      awb_number: awbNumber,
+                                      status: order.status,
+                                    },
+                                  );
+
+                                  alert("AWB number saved successfully ✅");
+
+                                  setOrders((prevOrders) =>
+                                    prevOrders.map((o) =>
+                                      o._id === order._id
+                                        ? { ...o, awb_changed: false }
+                                        : o
+                                    )
+                                  );
+                                } catch (err) {
+                                  console.error(
+                                    "Failed to update AWB number:",
+                                    err
+                                  );
+                                  alert(
+                                    "Failed to update AWB number. Try again."
+                                  );
+                                }
+                              }}
+                            >
+                              Save
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <button
                           onClick={async () => {
                             try {
-                              const token = localStorage.getItem("authToken");
                               const newStatus = "Fulfilled";
 
-                              await axios.put(
-                                `${backendUrl}/admin/orders/${order._id}/status`,
+                              await api.put(
+                                `/admin/orders/${order._id}/status`,
                                 {
                                   status: newStatus,
                                   fulfilled_at: new Date().toISOString(),
                                 },
-                                {
-                                  headers: { Authorization: `Bearer ${token}` },
-                                }
                               );
 
                               setOrders((prevOrders) =>
@@ -959,7 +1042,7 @@ const Orders = () => {
         </div>
       </div>
 
-            <div className="orders-section" style={{ marginTop: "20px" }}>
+      <div className="orders-section" style={{ marginTop: "20px" }}>
         <div className="section-header">
           <CircleCheckBig size={20} />
           <h3>Order Fulfilled</h3>
@@ -987,7 +1070,11 @@ const Orders = () => {
                   .filter((order) => order.status === "Fulfilled")
                   .map((order) => (
                     <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                      <td
+                        className="order-id"
+                        title={order._id || order.id}
+                        onClick={() => setSelectedOrder(order)}
+                      >
                         #{order.id || order._id || "N/A"}
                       </td>
                       <td className="order-date">
@@ -1027,8 +1114,7 @@ const Orders = () => {
         </div>
       </div>
 
-
-       <div className="orders-section" style={{ marginTop: "20px" }}>
+      <div className="orders-section" style={{ marginTop: "20px" }}>
         <div className="section-header">
           <CircleCheckBig size={20} />
           <h3>Cancelled Orders</h3>
@@ -1057,7 +1143,11 @@ const Orders = () => {
                   .filter((order) => order.status === "Cancelled")
                   .map((order) => (
                     <tr key={order._id || order.id}>
-                      <td className="order-id" title={order._id || order.id} onClick={() => setSelectedOrder(order)}>
+                      <td
+                        className="order-id"
+                        title={order._id || order.id}
+                        onClick={() => setSelectedOrder(order)}
+                      >
                         #{order.id || order._id || "N/A"}
                       </td>
                       <td className="order-date">
@@ -1119,7 +1209,6 @@ const Orders = () => {
                 <h4>Plumber & Client Details</h4>
 
                 <div className="form-row same-line">
-                  {/* Plumber Dropdown */}
                   <div className="form-group">
                     <label>Plumber *</label>
                     <select
@@ -1129,18 +1218,19 @@ const Orders = () => {
                       required
                     >
                       <option value="">Select Plumber</option>
-                      {plumbers.filter((plumber) => plumber.kyc_status === 'approved').map((plumber) => (
-                        <option
-                          key={plumber._id || plumber.id}
-                          value={plumber._id || plumber.id}
-                        >
-                          {plumber.name} - {plumber.phone}
-                        </option>
-                      ))}
+                      {plumbers
+                        .filter((plumber) => plumber.kyc_status === "approved")
+                        .map((plumber) => (
+                          <option
+                            key={plumber._id || plumber.id}
+                            value={plumber._id || plumber.id}
+                          >
+                            {plumber.name} - {plumber.phone}
+                          </option>
+                        ))}
                     </select>
                   </div>
 
-                  {/* Client Name */}
                   <div className="form-group">
                     <label>Client Name *</label>
                     <input
@@ -1153,7 +1243,6 @@ const Orders = () => {
                     />
                   </div>
 
-                  {/* Client Phone */}
                   <div className="form-group">
                     <label>Client Phone *</label>
                     <input
@@ -1171,7 +1260,6 @@ const Orders = () => {
               <div className="form-section">
                 <h3>Address Details</h3>
                 <div className="address-row">
-                  {/* Billing Address */}
                   <div className="address-half">
                     <div className="form-group">
                       <label>Billing Address:</label>
@@ -1220,7 +1308,6 @@ const Orders = () => {
                       </div>
                     </div>
 
-                    {/* Checkbox for same as billing */}
                     <div className="checkbox-container">
                       <label className="checkbox-label">
                         <input
@@ -1234,7 +1321,6 @@ const Orders = () => {
                     </div>
                   </div>
 
-                  {/* Shipping Address */}
                   <div className="address-half">
                     <div className="form-group">
                       <label>Shipping Address:</label>
@@ -1291,49 +1377,75 @@ const Orders = () => {
               </div>
 
               <div className="form-section">
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Model *</label>
-                    <select
-                      name="model"
-                      value={newOrder.model}
-                      onChange={handleInputChange}
-                      required
-                    >
-                      <option value="">Select Model</option>
-                      {products.map((product) => (
-                        <option
-                          key={
-                            product.code ||
-                            product._id ||
-                            product.id ||
-                            product.product_id
+                <h4>Products</h4>
+                {Array.isArray(newOrder.products) &&
+                newOrder.products.length > 0 ? (
+                  newOrder.products.map((item, index) => (
+                    <div key={index} className="form-row same-line">
+                      <div className="form-group">
+                        <label>Model *</label>
+                        <select
+                          value={item.model}
+                          onChange={(e) =>
+                            handleProductChange(index, "model", e.target.value)
                           }
-                          value={
-                            product.code ||
-                            product._id ||
-                            product.id ||
-                            product.product_id
-                          }
+                          required
                         >
-                          {product.name} — ₹{product.mrp}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={newOrder.quantity}
-                      onChange={handleInputChange}
-                      min="1"
-                      required
-                    />
-                  </div>
-                </div>
+                          <option value="">Select Model</option>
+                          {products.map((product, idx) => (
+                            <option
+                              key={product._id || product.code || idx}
+                              value={product._id || product.code}
+                            >
+                              {product.name} — ₹{product.mrp}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Quantity *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleProductChange(
+                              index,
+                              "quantity",
+                              e.target.value
+                            )
+                          }
+                          required
+                        />
+                      </div>
+
+                      {newOrder.products.length > 1 && (
+                        <button
+                          type="button"
+                          className="product-remove-btn"
+                          onClick={() => removeProductRow(index)}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: "#666", fontSize: "14px" }}>
+                    No product added yet. Click “+ Add Product” below to start.
+                  </p>
+                )}
               </div>
+
+              <button
+                type="button"
+                className="add-product-btn"
+                onClick={addProductRow}
+                style={{ marginTop: "10px" }}
+              >
+                + Add Product
+              </button>
 
               <div className="form-section">
                 <div className="order-total">
@@ -1361,237 +1473,382 @@ const Orders = () => {
         </div>
       )}
 
-{selectedOrder && (
-  <div
-    className="modal-overlay"
-    onClick={() => setSelectedOrder(null)}
-  >
-    <div
-      className="order-details-modal"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header with Gradient */}
-      <div className="order-modal-header">
-        <h3>Order Details</h3>
-        <button
-          className="modal-close-btn"
-          onClick={() => setSelectedOrder(null)}
-        >
-          <X size={24} />
-        </button>
-      </div>
-
-      <div className="order-modal-body">
-        {/* Order ID and Status Badge */}
-        <div className="order-top-section">
-          <div className="order-id-badge">
-            <span className="label">Order ID</span>
-            <span className="value">#{selectedOrder.id || selectedOrder._id}</span>
-          </div>
-          <div className={`status-badge-large status-${selectedOrder.status?.toLowerCase().replace('-', '_')}`}>
-            <span className="status-dot"></span>
-            {selectedOrder.status}
-          </div>
-        </div>
-
-        {/* Customer and Plumber Info Cards */}
-        <div className="info-cards-row">
-          <div className="info-card customer-card">
-            <div className="icon-circle customer-icon">👤</div>
-            <div className="info-content">
-              <span className="info-label">Customer</span>
-              <span className="info-name">{getCustomerName(selectedOrder)}</span>
-              <span className="info-detail">{selectedOrder.client?.phone || 'N/A'}</span>
+      {selectedOrder && (
+        <div className="modal-overlay" onClick={() => setSelectedOrder(null)}>
+          <div
+            className="order-details-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="order-modal-header">
+              <h3>Order Details</h3>
+              <button
+                className="modal-close-btn"
+                onClick={() => setSelectedOrder(null)}
+              >
+                <X size={24} />
+              </button>
             </div>
-          </div>
-          <div className="info-card plumber-card">
-            <div className="icon-circle plumber-icon">🔧</div>
-            <div className="info-content-01">
-              <span className="info-label">Plumber</span>
-              <span className="info-name">{getPlumberName(selectedOrder)}</span>
-              <span className="info-detail">{selectedOrder.plumber?.phone || 'N/A'}</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Addresses Section */}
-        <div className="addresses-row">
-          <div className="address-card billing-card">
-            <div className="address-header">📍 Billing Address</div>
-            <div className="address-content">
-              {getBillingAddress(selectedOrder)}
-            </div>
-          </div>
-          <div className="address-card shipping-card">
-            <div className="address-header">🚚 Shipping Address</div>
-            <div className="address-content">
-              {getShippingAddress(selectedOrder)}
-            </div>
-          </div>
-        </div>
-
-        {/* Order Items Section */}
-        <div className="items-section">
-          <h4 className="section-title">Order Items</h4>
-          {selectedOrder.items?.map((item, index) => (
-            <div key={index} className="order-item-card">
-              <div className="item-icon">📦</div>
-              <div className="item-details">
-                <span className="item-name">{getProductNameById(item.product)}</span>
-                <span className="item-quantity">Quantity: {item.quantity} × ₹{item.price?.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="item-price">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Tracking Info - Only show for Dispatched or Fulfilled status */}
-        {(selectedOrder.status === 'Dispatched' || selectedOrder.status === 'Fulfilled') && selectedOrder.awb_number && (
-          <div className="tracking-card">
-            <div className="tracking-label">📍 Tracking Number</div>
-            <div className="tracking-number">{selectedOrder.awb_number}</div>
-          </div>
-        )}
-
-        {/* Invoice Upload Section - Only show for Dispatched status */}
-        {selectedOrder.status === 'Dispatched' && (
-          <div className="invoice-upload-section">
-            <h4 className="section-title">Invoice</h4>
-            {selectedOrder.invoiceKey ? (
-              <div className="invoice-card">
-                <div className="invoice-info">
-                  <span className="invoice-icon">📄</span>
-                  <span className="invoice-text">Invoice uploaded</span>
+            <div className="order-modal-body">
+              <div className="order-top-section">
+                <div className="order-id-badge">
+                  <span className="label">Order ID</span>
+                  <span className="value">
+                    #{selectedOrder.id || selectedOrder._id}
+                  </span>
                 </div>
-                <button
-                  className="btn-download-invoice"
-                  onClick={async () => {
-                    try {
-                      const token = localStorage.getItem("authToken");
-                      const response = await axios.post(
-                        `${backendUrl}/admin/order/get-invoice/${selectedOrder._id}`,
-                        { key: selectedOrder.invoiceKey },
-                        {
-                          headers: { Authorization: `Bearer ${token}` },
-                        }
-                      );
-                      window.open(response.data.url, '_blank');
-                    } catch (err) {
-                      console.error('Failed to download invoice:', err);
-                      alert('Failed to download invoice. Try again.');
-                    }
-                  }}
+                <div
+                  className={`status-badge-large status-${selectedOrder.status
+                    ?.toLowerCase()
+                    .replace("-", "_")}`}
                 >
-                  Download Invoice
-                </button>
+                  <span className="status-dot"></span>
+                  {selectedOrder.status}
+                </div>
               </div>
-            ) : (
-              <div className="invoice-upload-card">
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  id={`modal-invoice-${selectedOrder._id}`}
-                  style={{ display: 'none' }}
-                  onChange={async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
 
-                    if (file.type !== 'application/pdf') {
-                      alert('Only PDF files are allowed');
-                      return;
-                    }
-
-                    if (file.size > 5 * 1024 * 1024) {
-                      alert('File size exceeds 5MB limit');
-                      return;
-                    }
-
-                    
-
-                    try {
-
-                      const token = localStorage.getItem("authToken");
-    console.log("Token:", token ? "exists" : "missing");
-    
-    if (!token) {
-      alert("Authentication required. Please login again.");
-      return;
-    }
-
-                      const formData = new FormData();
-                      formData.append('invoice', file);
-                      formData.append('docType', 'invoice');
-                      formData.append('fileType', 'pdf');
-
-                      const response = await axios.post(
-                        `${backendUrl}/admin/order/upload-invoice/${selectedOrder._id}`,
-                        formData,
-                        {
-                          headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'multipart/form-data',
-                          },
-                        }
-                      );
-
-                      alert('Invoice uploaded successfully ✅');
-                      
-                      // Update selected order
-                      setSelectedOrder({
-                        ...selectedOrder,
-                        invoiceKey: response.data.data.invoiceKey
-                      });
-
-                      // Update orders list
-                      setOrders((prevOrders) =>
-                        prevOrders.map((o) =>
-                          o._id === selectedOrder._id
-                            ? { ...o, invoiceKey: response.data.data.invoiceKey }
-                            : o
-                        )
-                      );
-
-                      e.target.value = '';
-                    } catch (err) {
-                      console.error('Failed to upload invoice:', err);
-                      alert(err.response?.data?.message || 'Failed to upload invoice. Try again.');
-                    }
-                  }}
-                />
-                <label
-                  htmlFor={`modal-invoice-${selectedOrder._id}`}
-                  className="btn-upload-invoice"
-                >
-                  <span>📤</span> Upload Invoice (PDF)
-                </label>
+              {/* Customer and Plumber Info Cards */}
+              <div className="info-cards-row">
+                <div className="info-card customer-card">
+                  <div className="icon-circle customer-icon">👤</div>
+                  <div className="info-content">
+                    <span className="info-label">Customer</span>
+                    <span className="info-name">
+                      {getCustomerName(selectedOrder)}
+                    </span>
+                    <span className="info-detail">
+                      {selectedOrder.client?.phone || "N/A"}
+                    </span>
+                  </div>
+                </div>
+                <div className="info-card plumber-card">
+                  <div className="icon-circle plumber-icon">🔧</div>
+                  <div className="info-content-01">
+                    <span className="info-label">Plumber</span>
+                    <span className="info-name">
+                      {getPlumberName(selectedOrder)}
+                    </span>
+                    <span className="info-detail">
+                      {selectedOrder.plumber?.phone || "N/A"}
+                    </span>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Dates Section */}
-        <div className="dates-row">
-          <div className="date-card order-date-card">
-            <span className="date-label">Order Date</span>
-            <span className="date-value">{formatDate(selectedOrder.created_at || selectedOrder.createdAt)}</span>
-          </div>
-          {selectedOrder.fulfilled_at && (
-            <div className="date-card fulfilled-date-card">
-              <span className="date-label">Fulfilled On</span>
-              <span className="date-value">{formatDate(selectedOrder.fulfilled_at || selectedOrder.fulfilledAt)}</span>
+              {/* Addresses Section */}
+              <div className="addresses-row">
+                <div className="address-card billing-card">
+                  <div className="address-header">📍 Billing Address</div>
+                  <div className="address-content">
+                    {getBillingAddress(selectedOrder)}
+                  </div>
+                </div>
+                <div className="address-card shipping-card">
+                  <div className="address-header">🚚 Shipping Address</div>
+                  <div className="address-content">
+                    {getShippingAddress(selectedOrder)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Items Section */}
+              <div className="items-section">
+                <h4 className="section-title">Order Items</h4>
+                {selectedOrder.items?.map((item, index) => (
+                  <div key={index} className="order-item-card">
+                    <div className="item-icon">📦</div>
+                    <div className="item-details">
+                      <span className="item-name">
+                        {getProductNameById(item.product)}
+                      </span>
+                      <span className="item-quantity">
+                        Quantity: {item.quantity} × ₹
+                        {item.price?.toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                    <div className="item-price">
+                      ₹{(item.quantity * item.price).toLocaleString("en-IN")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tracking Info - Only show for Dispatched or Fulfilled status */}
+              {(selectedOrder.status === "Dispatched" ||
+                selectedOrder.status === "Fulfilled") &&
+                selectedOrder.awb_number && (
+                  <div className="tracking-card">
+                    <div className="tracking-label">📍 Tracking Number</div>
+                    <div className="tracking-number">
+                      {selectedOrder.awb_number}
+                    </div>
+                  </div>
+                )}
+
+              {/* Invoice Upload Section - Only show for Dispatched status */}
+              {selectedOrder.status === "Dispatched" && (
+                <div className="invoice-upload-section">
+                  <h4 className="section-title">Invoice</h4>
+                  {selectedOrder.invoiceKey ? (
+                    <div className="invoice-card">
+                      <div className="invoice-info">
+                        <span className="invoice-icon">📄</span>
+                        <span className="invoice-text">Invoice uploaded</span>
+                      </div>
+                      <button
+                        className="btn-download-invoice"
+                        onClick={async () => {
+                          try {
+                            const response = await api.post(
+                              `/admin/order/get-invoice/${selectedOrder._id}`,
+                              { key: selectedOrder.invoiceKey }
+                            );
+                            window.open(response.data.url, "_blank");
+                          } catch (err) {
+                            console.error("Failed to download invoice:", err);
+                            alert("Failed to download invoice. Try again.");
+                          }
+                        }}
+                      >
+                        Download Invoice
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="invoice-upload-card">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        id={`modal-invoice-${selectedOrder._id}`}
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+
+                          if (file.type !== "application/pdf") {
+                            alert("Only PDF files are allowed");
+                            return;
+                          }
+
+                          if (file.size > 5 * 1024 * 1024) {
+                            alert("File size exceeds 5MB limit");
+                            return;
+                          }
+
+                          try {
+                            const formData = new FormData();
+                            formData.append("invoice", file);
+                            formData.append("docType", "invoice");
+                            formData.append("fileType", "pdf");
+
+                            const response = await api.post(
+                              `/admin/order/upload-invoice/${selectedOrder._id}`,
+                              formData,
+                            );
+
+                            alert("Invoice uploaded successfully ✅");
+
+                            setSelectedOrder({
+                              ...selectedOrder,
+                              invoiceKey: response.data.data.invoiceKey,
+                            });
+
+                            setOrders((prevOrders) =>
+                              prevOrders.map((o) =>
+                                o._id === selectedOrder._id
+                                  ? {
+                                      ...o,
+                                      invoiceKey: response.data.data.invoiceKey,
+                                    }
+                                  : o
+                              )
+                            );
+
+                            e.target.value = "";
+                          } catch (err) {
+                            console.error("Failed to upload invoice:", err);
+                            alert(
+                              err.response?.data?.message ||
+                                "Failed to upload invoice. Try again."
+                            );
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`modal-invoice-${selectedOrder._id}`}
+                        className="btn-upload-invoice"
+                      >
+                        <span>📤</span> Upload Invoice (PDF)
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dates Section */}
+              <div className="dates-row">
+                <div className="date-card order-date-card">
+                  <span className="date-label">Order Date</span>
+                  <span className="date-value">
+                    {formatDate(
+                      selectedOrder.created_at || selectedOrder.createdAt
+                    )}
+                  </span>
+                </div>
+                {selectedOrder.fulfilled_at && (
+                  <div className="date-card fulfilled-date-card">
+                    <span className="date-label">Fulfilled On</span>
+                    <span className="date-value">
+                      {formatDate(
+                        selectedOrder.fulfilled_at || selectedOrder.fulfilledAt
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Total Section */}
+              <div className="order-total-section">
+                <span className="total-label">Total Amount</span>
+                <span className="total-amount">
+                  ₹
+                  {calculateOrderTotal(selectedOrder.items).toLocaleString(
+                    "en-IN"
+                  )}
+                </span>
+              </div>
             </div>
-          )}
+          </div>
         </div>
+      )}
 
-        {/* Total Section */}
-        <div className="order-total-section">
-          <span className="total-label">Total Amount</span>
-          <span className="total-amount">₹{calculateOrderTotal(selectedOrder.items).toLocaleString('en-IN')}</span>
+      {showCancelModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "500px" }}>
+            <div className="modal-header">
+              <h3>Cancel Order</h3>
+              <button
+                className="close-btn"
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "15px", color: "#666" }}>
+                Please provide a reason for cancelling this order:
+              </p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Enter cancellation reason..."
+                rows="4"
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  resize: "vertical",
+                }}
+              />
+            </div>
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f0f0f0",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCancelReasonSubmit}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
+
+      {showCancelConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "400px" }}>
+            <div className="modal-header">
+              <h3>Confirm Cancellation</h3>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "10px" }}>
+                Are you sure you want to cancel this order?
+              </p>
+              <p style={{ fontSize: "14px", color: "#666" }}>
+                <strong>Reason:</strong> {cancelReason}
+              </p>
+            </div>
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => handleCancelConfirm(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f0f0f0",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                No
+              </button>
+              <button
+                onClick={() => handleCancelConfirm(true)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Yes, Cancel Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

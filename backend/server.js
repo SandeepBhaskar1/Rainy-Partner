@@ -4,9 +4,9 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const compression = require("compression");
+const cookieParser = require("cookie-parser");
 require("dotenv").config();
 
-// Import routes
 const authRoutes = require("./routes/auth");
 const plumberRoutes = require("./routes/plumber");
 const leadsRoutes = require("./routes/leads");
@@ -17,18 +17,20 @@ const projectRoute = require("./routes/picture");
 const userRoute = require("./routes/userRegister");
 const kycRoutes = require("./routes/kycs");
 
-// Import middleware
 const { errorHandler } = require("./middleware/errorHandler");
 const { requestLogger } = require("./middleware/logger");
 const fileUpload = require("express-fileupload");
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.set("trust proxy", 1);
+app.use(cookieParser());
+  
+app.use(express.json({limit: '1mb'}));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.use(
   fileUpload({
-    limits: { fileSize: 10 * 1024 * 1024 },
+    limits: { fileSize: 5 * 1024 * 1024 },
     abortOnLimit: true,
     createParentPath: true,
     useTempFiles: false,
@@ -45,19 +47,33 @@ app.use(
   })
 );
 app.use(compression());
-app.use(
-  cors({
-    origin: [
-      "http://localhost:8081",
+
+const allowedOrigins = new Set([
+  "http://localhost:8081",
       "exp://s14wb3g-anonymous-8081.exp.direct",
       "http://localhost:5173",
-      "http://10.34.196.196",
+      'http://192.168.1.41:5173',
+      "http://172.20.10.2:5173",
       "exp://10.34.196.196:8081",
-    ],
+]);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+       console.log('🔍 Request origin:', origin);
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      return callback(new Error(`CORS policy violation: Origin not allowed -> ` + origin),  console.log('❌ Origin not allowed:', origin));
+    },
     credentials: true,
     optionsSuccessStatus: 200,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ]
   })
 );
+app.options("*", cors());
 
 app.get("/", (req, res) => {
   res.send("Welcome to the Rainy Partner API");
@@ -65,15 +81,12 @@ app.get("/", (req, res) => {
 
 app.use("/api", projectRoute);
 
-// Request parsing middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Logging middleware
 app.use(morgan("combined"));
 app.use(requestLogger);
 
-// API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/coordinator", coordinatorRoute)
@@ -90,13 +103,11 @@ app.use("/api/kyc", kycRoutes);
 
 app.use("/api/orders", require("./routes/orders"));
 
-// Health check endpoint
 app.get("/api/health", async (req, res) => {
   try {
     const dbState = mongoose.connection.readyState;
     const dbStatus = dbState === 1 ? "connected" : "disconnected";
 
-    // Get database statistics
     const collections = await mongoose.connection.db
       .listCollections()
       .toArray();
@@ -136,10 +147,8 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-// Error handling middleware
 app.use(errorHandler);
 
-// 404 handler
 app.use("*", (req, res) => {
   res.status(404).json({
     message: "Route not found",
@@ -148,7 +157,6 @@ app.use("*", (req, res) => {
   });
 });
 
-// Database connection
 mongoose
   .connect(process.env.MONGO_URL)
   .then(() => {
@@ -159,7 +167,6 @@ mongoose
     process.exit(1);
   });
 
-// Handle MongoDB connection events
 mongoose.connection.on("error", (error) => {
   console.error("MongoDB error:", error);
 });
@@ -172,7 +179,6 @@ mongoose.connection.on("reconnected", () => {
   console.log("MongoDB reconnected");
 });
 
-// Graceful shutdown
 process.on("SIGINT", async () => {
   console.log("Shutting down server...");
   try {
@@ -185,13 +191,11 @@ process.on("SIGINT", async () => {
   }
 });
 
-// Start server
 const PORT = process.env.PORT || 8001;
 const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://192.168.1.40:${PORT}`);
+  console.log(`Server running on http://192.168.1.41:${PORT}`);
 });
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
   server.close(() => {

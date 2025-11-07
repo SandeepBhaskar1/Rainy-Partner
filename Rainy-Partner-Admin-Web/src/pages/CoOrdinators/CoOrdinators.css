@@ -62,11 +62,13 @@
 .coordinators-table td {
   padding: 12px 15px;
   border-bottom: 1px solid #ddd;
+  text-align: center;
 }
 
 .coordinators-table th {
   font-weight: 600;
   color: #444;
+  text-align: center;
 }
 
 .coordinators-table tr:hover {

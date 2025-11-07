@@ -5,6 +5,7 @@ const { verifyAdminToken, verifyPlumberToken } = require("../middleware/auth");
 const { APIError, asyncHandler } = require("../middleware/errorHandler");
 const User = require("../models/User");
 const Order = require("../models/Order");
+const Product = require("../models/products");
 const {
   S3Client,
   GetObjectCommand,
@@ -12,10 +13,9 @@ const {
 } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const bcrypt = require("bcryptjs/dist/bcrypt");
+const counterSchema = require("../models/counterSchema");
 
 const router = express.Router();
-
-console.log("✅ Admin routes loaded");
 
 router.get(
   "/dashboard",
@@ -186,40 +186,104 @@ router.post(
   })
 );
 
+router.put(
+  "/plumbers/:id/reassign-coordinator",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const { coordinator_id } = req.body;
+      const plumberId = req.params.id;
+
+      if (!coordinator_id) {
+        return res.status(400).json({ message: "Coordinator ID required." });
+      }
+
+      const plumber = await User.findById(plumberId);
+      if (!plumber) {
+        return res.status(404).json({ message: "Plumber not found." });
+      }
+
+      const oldCoordinatorId = plumber.coordinator_id;
+      const newCoordinatorId = coordinator_id;
+
+      if (
+        oldCoordinatorId &&
+        oldCoordinatorId.toString() === newCoordinatorId.toString()
+      ) {
+        return res.status(200).json({ message: "Already assigned to this coordinator." });
+      }
+
+      // Update plumber record
+      plumber.coordinator_id = newCoordinatorId;
+      await plumber.save();
+
+      // Remove plumber from old coordinator
+      if (oldCoordinatorId) {
+        const oldCoord = await User.findById(oldCoordinatorId);
+        if (oldCoord && Array.isArray(oldCoord.assigned_plumbers)) {
+          oldCoord.assigned_plumbers = oldCoord.assigned_plumbers.filter((p) => {
+            const pid =
+              typeof p === "object" && p._id ? p._id.toString() : p.toString();
+            return pid !== plumber._id.toString();
+          });
+          await oldCoord.save();
+        }
+      }
+
+      // Add plumber to new coordinator
+      const newCoord = await User.findById(newCoordinatorId);
+      if (newCoord) {
+        if (!Array.isArray(newCoord.assigned_plumbers)) {
+          newCoord.assigned_plumbers = [];
+        }
+
+        const alreadyAssigned = newCoord.assigned_plumbers.some((p) => {
+          const pid =
+            typeof p === "object" && p._id ? p._id.toString() : p.toString();
+          return pid === plumber._id.toString();
+        });
+
+        if (!alreadyAssigned) {
+          newCoord.assigned_plumbers.push(plumber._id);
+          await newCoord.save();
+        }
+      }
+
+      res.status(200).json({
+        message: "Coordinator reassigned successfully",
+        plumber,
+      });
+    } catch (err) {
+      console.error("Error reassigning coordinator:", err);
+      res.status(500).json({ message: "Failed to reassign coordinator." });
+    }
+  }
+);
+
+
+
+
 router.post(
   "/admin-place-order",
   verifyAdminToken,
   [
     body("plumber_id").notEmpty().withMessage("Plumber ID is required"),
-    body("items")
-      .isArray({ min: 1 })
-      .withMessage("At least one item is required"),
-    body("items.*.product").notEmpty().withMessage("Product code is required"),
-    body("items.*.quantity")
-      .isInt({ min: 1 })
-      .withMessage("Quantity must be at least 1"),
-    body("items.*.price")
-      .isFloat({ min: 0 })
-      .withMessage("Price must be a positive number"),
-    body("client.name")
-      .trim()
-      .notEmpty()
-      .withMessage("Customer name is required"),
+    body("items").isArray({ min: 1 }).withMessage("At least one item is required"),
+    body("items.*.product").notEmpty().withMessage("Product code or ID is required"),
+    body("items.*.quantity").isInt({ min: 1 }).withMessage("Quantity must be at least 1"),
+    body("client.name").trim().notEmpty().withMessage("Customer name is required"),
     body("client.phone")
       .matches(/^[6-9]\d{9}$/)
       .withMessage("Valid phone number is required"),
-
-    body("shipping.address")
-      .trim()
-      .notEmpty()
-      .withMessage("Shipping address is required"),
+    body("shipping.address").trim().notEmpty().withMessage("Shipping address is required"),
     body("shipping.city").trim().notEmpty().withMessage("City is required"),
-    body("shipping.pin")
-      .matches(/^\d{6}$/)
-      .withMessage("Valid PIN code is required"),
+    body("shipping.pin").matches(/^\d{6}$/).withMessage("Valid PIN code is required"),
   ],
   asyncHandler(async (req, res) => {
     console.log("🟢 Admin-place-order route hit");
+    console.log("📦 Incoming order body:", JSON.stringify(req.body, null, 2));
+
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -229,28 +293,77 @@ router.post(
     }
 
     const { plumber_id, items, client, shipping, billing } = req.body;
+    const admin_id = req.user?._id || req.user?.id;
 
-    const totalAmount = items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
+    const plumber = await User.findOne({
+      _id: plumber_id,
+      role: "PLUMBER",
+      is_active: true,
+    });
+    if (!plumber) {
+      return res.status(404).json({ detail: "Plumber not found or inactive" });
+    }
+
+    const productIds = items.map((i) => i.product);
+const productDocs = await Product.find({
+  code: { $in: productIds },
+});
+
+
+    if (productDocs.length === 0) {
+      return res.status(400).json({ detail: "No valid products found" });
+    }
+
+    const validatedItems = items.map((item) => {
+      const productDoc = productDocs.find(
+        (p) =>
+          p._id?.toString() === item.product?.toString() ||
+          p.code === item.product
+      );
+
+      if (!productDoc) {
+        throw new Error(`Invalid product: ${item.product}`);
+      }
+
+      return {
+        product: productDoc.code,
+        name: productDoc.name,
+        quantity: item.quantity,
+        price: productDoc.mrp,
+        subtotal: item.quantity * productDoc.mrp,
+      };
+    });
+
+    const totalAmount = validatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+
+    const today = new Date().toISOString().split("T")[0];
+    const counter = await counterSchema.findOneAndUpdate(
+      { date: today },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
     );
+    const order_number = `ORD-${today.replace(/-/g, "")}-${String(
+      counter.seq
+    ).padStart(4, "0")}`;
 
     const order = new Order({
+      order_number,
       plumber_id,
       client,
-      items,
+      items: validatedItems,
       shipping,
       billing: billing || shipping,
       total_amount: totalAmount,
       status: "Order-Placed",
-      order_created_by
+      order_created_by: admin_id,
     });
 
     await order.save();
 
-    res.json({
+    res.status(201).json({
       message: "Order placed successfully!",
       order_id: order._id,
+      order_number,
       total_amount: totalAmount,
     });
   })
@@ -319,7 +432,8 @@ router.put(
     }
 
     const { orderId } = req.params;
-    const { status, awb_number, fulfilled_at } = req.body;
+    const { status, awb_number, fulfilled_at, cancelledAt, cancelledBy, cancelled_reason } = req.body;
+    const userId = req.user?._id || req.user?.id;
 
     const order = await Order.findOne({ _id: orderId });
 
@@ -336,12 +450,21 @@ router.put(
       order.fulfilled_at = new Date(fulfilled_at);
     }
 
+    if (order.status === "Cancelled"){
+      order.cancelled_reason = cancelled_reason;
+      order.cancelledAt = cancelledAt || Date.now();
+      order.cancelledBy = cancelledBy || userId;
+    }
+
     await order.save();
 
     res.json({
       message: "Order status updated successfully",
       order_id: orderId,
       status,
+      cancelledAt,
+      cancelledBy,
+      cancelled_reason
     });
   })
 );
@@ -707,5 +830,22 @@ router.get("/co-ordinators", verifyAdminToken, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch coordinators" });
   }
 });
+
+router.put('/plumber/:id/delete', verifyAdminToken, asyncHandler(async (req, res) => {
+  const plumber = await User.findOne({ _id: req.params.id, role: 'PLUMBER' });
+
+  if (!plumber) {
+    return res.status(404).json({ message: 'Plumber not found' });
+  }
+
+  plumber.is_active = false;
+  plumber.kyc_status = 'deleted';
+  plumber.deleted_at = new Date();
+  plumber.deleted_by = req.user.id;
+  await plumber.save();
+
+  res.json({ message: 'Plumber marked as deleted successfully' });
+}));
+
 
 module.exports = router;

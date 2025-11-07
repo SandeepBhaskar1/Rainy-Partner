@@ -19,10 +19,10 @@ export default function TabLayout() {
           borderTopWidth: 1,
           margin: 0,
           borderTopColor: '#E0E0E0',
-          height: 70,
+          height: 90,
         },
         headerShown: false,
-        safeAreaInsets: { top: 0, bottom: 0 },
+        safeAreaInsets: { top: 0, bottom: 20 },
       }}
     >
       <Tabs.Screen

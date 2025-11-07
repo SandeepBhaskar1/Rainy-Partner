@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { ClipboardCheck, Loader, X } from "lucide-react";
 import "./KYCs.css";
+import api from "../../api/axiosInstence";
 
 const KYCs = () => {
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -25,10 +26,7 @@ const KYCs = () => {
         setLoading(true);
         setError(null);
 
-        const token = localStorage.getItem("authToken");
-        const response = await axios.get(`${backendUrl}/kyc/kyc-approvals`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await api.get(`/kyc/kyc-approvals`);
 
         const pending = response.data.pending || [];
         const rejected = response.data.rejected || [];
@@ -50,10 +48,7 @@ const KYCs = () => {
   useEffect(() => {
     const fetchCoordinators = async () => {
       try {
-        const token = localStorage.getItem("authToken");
-        const res = await axios.get(`${backendUrl}/admin/co-ordinators`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await api.get(`/admin/co-ordinators`);
         setCoordinators(res.data.coordinators || []);
       } catch (err) {
         console.error("Failed to load coordinators:", err);
@@ -71,14 +66,10 @@ const KYCs = () => {
     setModalLoading(true);
 
     try {
-      const token = localStorage.getItem("authToken");
-      
-      // Fetch full KYC details
-      const detailResponse = await axios.get(`${backendUrl}/kyc/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const detailResponse = await api.get(`/kyc/${id}`);
 
       const kycData = detailResponse.data || kycItem;
+      console.log(kycData);
 
       // Fetch signed URLs for documents
       const signedUrls = {};
@@ -87,6 +78,7 @@ const KYCs = () => {
         { key: "aadhaar_back", name: "aadhaar_back" },
         { key: "license_front", name: "license_front" },
         { key: "license_back", name: "license_back" },
+        { key: "profile", name: "profile" },
       ];
 
       await Promise.all(
@@ -94,10 +86,9 @@ const KYCs = () => {
           const fileKey = kycData[key];
           if (!fileKey) return;
           try {
-            const res = await axios.post(
-              `${backendUrl}/installations/get-image`,
-              { key: fileKey },
-              { headers: { Authorization: `Bearer ${token}` } }
+            const res = await api.post(
+              `/installations/get-image`,
+              { key: fileKey }
             );
             const signedUrl =
               res.data?.url ||
@@ -142,11 +133,9 @@ const KYCs = () => {
     }
 
     try {
-      const token = localStorage.getItem("authToken");
-      await axios.post(
-        `${backendUrl}/kyc/approve`,
-        { id: selectedKycId, coordinator_id: selectedCoordinator },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.post(
+        `/kyc/approve`,
+        { id: selectedKycId, coordinator_id: selectedCoordinator }
       );
 
       setPendingApprovals((prev) =>
@@ -155,7 +144,7 @@ const KYCs = () => {
           return itemId !== selectedKycId;
         })
       );
-      
+
       setShowModal(false);
       setSelectedCoordinator("");
       setSelectedKycId(null);
@@ -171,13 +160,11 @@ const KYCs = () => {
     if (!confirm("Are you sure you want to reject this KYC?")) return;
 
     try {
-      const token = localStorage.getItem("authToken");
-      const res = await axios.post(
-        `${backendUrl}/kyc/reject`,
-        { id },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.post(
+        `/kyc/reject`,
+        { id }
       );
-      
+
       setPendingApprovals((prev) => {
         const filtered = prev.filter((item) => {
           const itemId = String(item._id?.$oid || item._id || item.id);
@@ -185,12 +172,12 @@ const KYCs = () => {
         });
         return filtered;
       });
-      
+
       setRejectedApprovals((prev) => [
         ...prev,
         { ...res.data.data, status: "rejected" },
       ]);
-      
+
       alert("KYC rejected successfully!");
     } catch (err) {
       console.error("Error rejecting KYC:", err);
@@ -216,8 +203,7 @@ const KYCs = () => {
   }
 
   const filteredPending = pendingApprovals.filter(
-    (item) =>
-      item.needs_onboarding === false && item.agreement_status === true
+    (item) => item.needs_onboarding === false && item.agreement_status === true
   );
 
   return (
@@ -225,7 +211,6 @@ const KYCs = () => {
       <div className="kyc-container">
         {error && <div className="error-text">{error}</div>}
 
-        {/* ---------- Pending KYCs ---------- */}
         <div className="kyc-section">
           <div className="section-header">
             <ClipboardCheck size={20} />
@@ -250,9 +235,10 @@ const KYCs = () => {
                 <tbody>
                   {filteredPending.map((item) => {
                     const id = String(item._id?.$oid || item._id || item.id);
+                    const user_id = item.user_id;
                     return (
                       <tr key={id}>
-                        <td>{id}</td>
+                        <td>{user_id}</td>
                         <td>{item.name || "N/A"}</td>
                         <td>{item.phone || item.mobile || "N/A"}</td>
                         <td>{item.city || item.address?.city || "N/A"}</td>
@@ -307,12 +293,15 @@ const KYCs = () => {
                     const id = String(item._id?.$oid || item._id || item.id);
                     return (
                       <tr key={id}>
-                        <td>{id}</td>
+                        <td>{user_id}</td>
                         <td>
                           <button
                             className="view-link"
                             onClick={() => openViewModal(item)}
-                            style={{ textDecoration: "underline", cursor: "pointer" }}
+                            style={{
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                            }}
                           >
                             {item.name || "N/A"}
                           </button>
@@ -334,12 +323,15 @@ const KYCs = () => {
         </div>
       </div>
 
-      {/* ---------- Approve Modal ---------- */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal-container" style={{ maxWidth: "800px" }}>
             <div className="modal-header">
-              <h3>{isViewOnly ? "View KYC Details" : "Review KYC & Assign Coordinator"}</h3>
+              <h3>
+                {isViewOnly
+                  ? "View KYC Details"
+                  : "Review KYC & Assign Coordinator"}
+              </h3>
               <button className="close-btn" onClick={closeModal}>
                 <X size={20} />
               </button>
@@ -353,11 +345,22 @@ const KYCs = () => {
                 </div>
               ) : selectedKycData ? (
                 <>
-                  {/* Plumber Details */}
                   <div style={{ marginBottom: "20px" }}>
                     <h4>Plumber Information</h4>
-                    <p><strong>Name:</strong> {selectedKycData.name || "N/A"}</p>
-                    <p><strong>Phone:</strong> {selectedKycData.phone || selectedKycData.mobile || "N/A"}</p>
+                    <div className="modal-profile-image-container">
+                      <img
+                        src={selectedKycData.signedUrls.profile}
+                        alt="Plumber Profile"
+                        className="modal-proile-image"
+                      />
+                    </div>
+                    <p>
+                      <strong>Name:</strong> {selectedKycData.name || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Phone:</strong>{" "}
+                      {selectedKycData.phone || selectedKycData.mobile || "N/A"}
+                    </p>
                     <p>
                       <strong>Address:</strong>{" "}
                       {selectedKycData.address
@@ -367,6 +370,10 @@ const KYCs = () => {
                             selectedKycData.address.state || ""
                           }, ${selectedKycData.address.pin || ""}`
                         : selectedKycData.city || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Service Area Pincodes:</strong>{" "}
+                      {selectedKycData.service_area_pin || "N/A"}
                     </p>
                     {isViewOnly && (
                       <p>
@@ -379,7 +386,13 @@ const KYCs = () => {
                   {/* Documents */}
                   <div style={{ marginBottom: "20px" }}>
                     <h4>Documents</h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "10px",
+                      }}
+                    >
                       {[
                         { key: "aadhaar_front", label: "Aadhaar Front" },
                         { key: "aadhaar_back", label: "Aadhaar Back" },
@@ -408,14 +421,19 @@ const KYCs = () => {
                     </div>
                   </div>
 
-                  {/* Coordinator Selection - Only show if not view only */}
                   {!isViewOnly && (
                     <div>
-                      <label><strong>Select Coordinator:</strong></label>
+                      <label>
+                        <strong>Select Coordinator:</strong>
+                      </label>
                       <select
                         value={selectedCoordinator}
                         onChange={(e) => setSelectedCoordinator(e.target.value)}
-                        style={{ width: "100%", padding: "8px", marginTop: "5px" }}
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          marginTop: "5px",
+                        }}
                       >
                         <option value="">-- Select Coordinator --</option>
                         {coordinators.map((coord) => (
@@ -434,7 +452,11 @@ const KYCs = () => {
 
             {!isViewOnly && (
               <div className="modal-footer">
-                <button className="submit-btn" onClick={handleApproveSubmit} disabled={modalLoading}>
+                <button
+                  className="submit-btn"
+                  onClick={handleApproveSubmit}
+                  disabled={modalLoading}
+                >
                   Approve & Assign
                 </button>
               </div>

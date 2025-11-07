@@ -12,6 +12,7 @@ import {
   Loader,
 } from "lucide-react";
 import "./Plumbers.css";
+import api from "../../api/axiosInstence";
 
 const Plumbers = () => {
   const [plumbers, setPlumbers] = useState([]);
@@ -35,34 +36,22 @@ const Plumbers = () => {
   const [expandedStates, setExpandedStates] = useState({});
   const [expandedDistricts, setExpandedDistricts] = useState({});
   const [expandedCities, setExpandedCities] = useState({});
-    const [selectedPlumber, setSelectedPlumber] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPlumber, setSelectedPlumber] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
+  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("");
 
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
-  const token = localStorage.getItem("authToken");
 
   useEffect(() => {
-    if (!token) {
-      setError("Authentication token not found");
-      setLoading(false);
-      return;
-    }
 
     const fetchData = async () => {
       try {
         const [filterRes, coordRes, plumbersRes, leadsRes] = await Promise.all([
-          axios.get(`${BACKEND_URL}/admin/plumbers/filters`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${BACKEND_URL}/admin/co-ordinators`, {
-            headers: { Authorization: `Bearer ${token}`}
-          }),
-          axios.get(`${BACKEND_URL}/admin/plumbers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${BACKEND_URL}/post-leads`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          api.get(`/admin/plumbers/filters`),
+          api.get(`/admin/co-ordinators`),
+          api.get(`/admin/plumbers`),
+          api.get(`/post-leads`),
         ]);
 
         const fetchedStates = filterRes.data.states || [];
@@ -109,45 +98,40 @@ const Plumbers = () => {
     };
 
     fetchData();
-  }, [BACKEND_URL, token]);
+  }, [BACKEND_URL]);
 
-useEffect(() => {
-  const fetchImages = async () => {
-    // Filter plumbers that have profile images
-    const plumbersWithProfiles = plumbers.filter(p => p.profile);
-    
-    if (plumbersWithProfiles.length === 0) {
-      return;
-    }
+  useEffect(() => {
+    const fetchImages = async () => {
+      const plumbersWithProfiles = plumbers.filter((p) => p.profile);
 
-    try {
-      // Single API call with all keys
-      const keys = plumbersWithProfiles.map(p => p.profile);
-      
-      const res = await axios.post(
-        `${BACKEND_URL}/admin/get-multiple-plumber-profiles`,
-        { keys },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (plumbersWithProfiles.length === 0) {
+        return;
+      }
 
-      // Map URLs back to plumber IDs
-      const images = {};
-      plumbersWithProfiles.forEach((plumber) => {
-        const imageUrl = res.data.urls[plumber.profile];
-        if (imageUrl) {
-          images[plumber.id] = imageUrl;
-        }
-      });
+      try {
+        const keys = plumbersWithProfiles.map((p) => p.profile);
 
-      console.log("Fetched all images in one request:", images);
-      setPlumberImages(images);
-    } catch (err) {
-      console.error("Error fetching plumber images:", err);
-    }
-  };
+        const res = await api.post(
+          `/admin/get-multiple-plumber-profiles`,
+          { keys }
+        );
 
-  if (plumbers.length) fetchImages();
-}, [plumbers, BACKEND_URL, token]);
+        const images = {};
+        plumbersWithProfiles.forEach((plumber) => {
+          const imageUrl = res.data.urls[plumber.profile];
+          if (imageUrl) {
+            images[plumber.id] = imageUrl;
+          }
+        });
+
+        setPlumberImages(images);
+      } catch (err) {
+        console.error("Error fetching plumber images:", err);
+      }
+    };
+
+    if (plumbers.length) fetchImages();
+  }, [plumbers, BACKEND_URL]);
 
   useEffect(() => {
     let filteredDistricts = [];
@@ -337,11 +321,11 @@ useEffect(() => {
     return count;
   };
 
-const getCoordName = (id) => {
-  const coord = coordinator.find((c) => c._id === id);
-  return coord ? `${coord.name} (${coord.phone})` : 'N/A';
-};
-
+  const getCoordName = (id) => {
+    if (!id) return "N/A";
+    const coord = coordinator.find((c) => String(c._id) === String(id));
+    return coord ? `${coord.name} (${coord.phone})` : "N/A";
+  };
 
   const getCurrentJobForPlumber = (plumberId) => {
     if (!plumberId || !leads || leads.length === 0) {
@@ -364,8 +348,8 @@ const getCoordName = (id) => {
 
   if (loading)
     return (
-        <div className="loading-spinner">
-            <Loader size={32} className="spinner-icon" />
+      <div className="loading-spinner">
+        <Loader size={32} className="spinner-icon" />
         <p>Loading plumbers...</p>
       </div>
     );
@@ -380,7 +364,6 @@ const getCoordName = (id) => {
   return (
     <div className="plumbers-page">
       <div className="plumbers-container">
-        {/* Filters Section */}
         <div className="filters-section">
           <div className="filters-header">
             <div className="filters-title">
@@ -490,12 +473,17 @@ const getCoordName = (id) => {
                     return (
                       <tr key={`${plumber.id}-${plumber.installation_id}`}>
                         <td>
-                          <button className="plumber-link" onClick={() => {openPlumberModal(plumber)}}>
+                          <button
+                            className="plumber-link"
+                            onClick={() => {
+                              openPlumberModal(plumber);
+                            }}
+                          >
                             {plumber.name}
                           </button>
                         </td>
                         <td>{plumber.address?.city || "N/A"}</td>
-                        <td>{plumber.coordinator_id || "N/A"}</td>
+                        <td>{getCoordName(plumber.coordinator_id) || "N/A"}</td>
                         <td>{plumber.installation_id || "N/A"}</td>
                         <td>
                           <span className="status-badge status-in-progress">
@@ -622,10 +610,7 @@ const getCoordName = (id) => {
                                                 return (
                                                   <tr key={plumber.id}>
                                                     <td className="plumber-id-cell">
-                                                      {plumber.plumber_id ||
-                                                        plumber.id
-                                                          .slice(-6)
-                                                          .toUpperCase()}
+                                                      {plumber.user_id.toUpperCase()}
                                                     </td>
                                                     <td>
                                                       <div className="plumber-info">
@@ -652,7 +637,16 @@ const getCoordName = (id) => {
                                                         </div>
                                                         <div className="plumber-details">
                                                           <div className="plumber-name">
-                                                            <button onClick={() => {openPlumberModal(plumber)}} className="name-button">{plumber.name}</button>
+                                                            <button
+                                                              onClick={() => {
+                                                                openPlumberModal(
+                                                                  plumber
+                                                                );
+                                                              }}
+                                                              className="name-button"
+                                                            >
+                                                              {plumber.name}
+                                                            </button>
                                                           </div>
                                                           <div className="plumber-phone">
                                                             {plumber.phone}
@@ -660,7 +654,11 @@ const getCoordName = (id) => {
                                                         </div>
                                                       </div>
                                                     </td>
-                                                    <td>{getCoordName(plumber.coordinator_id)}</td>
+                                                    <td>
+                                                      {getCoordName(
+                                                        plumber.coordinator_id
+                                                      )}
+                                                    </td>
                                                     <td className="jobs-cell">
                                                       {getTotalJobsForPlumber(
                                                         plumber.id
@@ -692,8 +690,38 @@ const getCoordName = (id) => {
                                                       )}
                                                     </td>
                                                     <td className="delete-cell">
-                                                      <button className="delete-btn">
-                                                        <Trash2 size={16} />
+                                                      <button
+                                                        className="delete-btn"
+                                                        onClick={async () => {
+                                                          const confirmed =
+                                                            window.confirm(
+                                                              "Are you sure you want to delete this plumber?"
+                                                            );
+                                                          if (!confirmed)
+                                                            return;
+
+                                                          try {
+                                                            const response =
+                                                              await api.put(
+                                                                `/admin/plumber/${plumber.id}/delete`,
+                                                                {}
+                                                              );
+
+                                                            alert(
+                                                              "Plumber deleted successfully."
+                                                            );
+                                                          } catch (error) {
+                                                            console.error(
+                                                              "Error deleting plumber:",
+                                                              error
+                                                            );
+                                                            alert(
+                                                              "Failed to delete plumber. Try again."
+                                                            );
+                                                          }
+                                                        }}
+                                                      >
+                                                        <Trash2 size={16} />{" "}
                                                         Delete
                                                       </button>
                                                     </td>
@@ -718,172 +746,261 @@ const getCoordName = (id) => {
             {Object.keys(groupedPlumbers).length === 0 && (
               <p className="no-plumbers">No approved plumbers found</p>
             )}
-
-            
           </div>
         </div>
-
-        
       </div>
 
       {isModalOpen && selectedPlumber && (
-              <div className="modal-overlay" onClick={closePlumberModal}>
-                <div
-                  className="modal-container"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="modal-header">
-                    <h3>KYC Details — {selectedPlumber.name}</h3>
-                    <button className="close-btn" onClick={closePlumberModal}>
-                      <X size={24} />
-                    </button>
-                  </div>
-                  <div className="modal-body">
-                    {/* Profile Section */}
-                    <div className="modal-profile-section">
-                      <div className="modal-avatar-container">
-                        <div className="modal-plumber-avatar">
-                          {plumberImages[selectedPlumber.id] ? (
-                            <img
-                              src={plumberImages[selectedPlumber.id]}
-                              alt={selectedPlumber.name}
-                            />
-                          ) : (
-                            <div className="modal-avatar-placeholder">
-                              {selectedPlumber.name?.charAt(0).toUpperCase() || "P"}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="modal-profile-info">
-                        <h2 className="modal-plumber-name">{selectedPlumber.name}</h2>
-                        <div className="modal-plumber-contact">
-                          <span>{selectedPlumber.email || "No email provided"}</span>
-                          <span>{selectedPlumber.phone}</span>
-                        </div>
-                      </div>
-                    </div>
-      
-                    {/* Details Grid */}
-                    <div className="modal-details-grid">
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">License</div>
-                        <div className="modal-detail-value">
-                          {selectedPlumber.plumber_license_number || "N/A"}
-                        </div>
-                      </div>
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">Aadhaar Number</div>
-                        <div className="modal-detail-value">
-                          {selectedPlumber.aadhaar_number || "N/A"}
-                        </div>
-                      </div>
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">KYC Status</div>
-                        <div className="modal-detail-value">
-                          {selectedPlumber.kyc_status === 'approved' ? 'Approved' : "N/A"}
-                        </div>
-                      </div>
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">Experience</div>
-                        <div className="modal-detail-value">
-                          {selectedPlumber.experience || "N/A"}
-                        </div>
-                      </div>
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">Total Jobs</div>
-                        <div className="modal-detail-value">
-                          {getTotalJobsForPlumber(selectedPlumber.id)}
-                        </div>
-                      </div>
-                      <div className="modal-detail-card">
-                        <div className="modal-detail-label">Rating</div>
-                        <div className="modal-detail-value">
-                          ★ {selectedPlumber.trust || 0}
-                        </div>
-                      </div>
-                    </div>
-      
-                    {/* Address Section */}
-                    <h3 className="modal-section-title">Address</h3>
-                    <div className="modal-address-text">
-                      {selectedPlumber.address?.address}
-                      {selectedPlumber.address?.city || ""}, {selectedPlumber.address?.district || ""}, {selectedPlumber.address?.state || ""} — {selectedPlumber.address?.pin || ""}
-                    </div>
-      
-                    <h3 className="modal-section-title">Service Area Pincodes</h3>
-                    <div className="modal-address-text">
-                      {selectedPlumber.service_area_pin}
-                    </div>
-      
-                    {/* Documents Section */}
-      {/* 📄 Documents Section */}
-      <h3 className="modal-section-title">Documents</h3>
-      <div className="modal-documents-list">
-        {[
-          { key: "aadhaar_front", label: "Aadhaar Front" },
-          { key: "aadhaar_back", label: "Aadhaar Back" },
-          { key: "license_front", label: "License Front" },
-          { key: "license_back", label: "License Back" },
-        ].map(({ key, label }) => {
-          const docKey = selectedPlumber[key];
-          if (!docKey) return null;
-          return (
-            <div key={key} className="modal-document-item">
-              <span className="modal-document-name">{label}</span>
+        <div className="modal-overlay-plumber" onClick={closePlumberModal}>
+          <div
+            className="modal-container-plumber"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>KYC Details — {selectedPlumber.name}</h3>
               <button
-                className="modal-document-link"
-                onClick={async () => {
-                  try {
-                    const token = localStorage.getItem("authToken");
-                    const res = await axios.post(
-                      `${BACKEND_URL}/installations/get-image`,
-                      { key: docKey },
-                      { headers: { Authorization: `Bearer ${token}` } }
-                    );
-                    const signedUrl =
-                      res.data?.url ||
-                      res.data?.data?.url ||
-                      res.data?.signedUrl ||
-                      null;
-      
-                    if (signedUrl) {
-                      window.open(signedUrl, "_blank");
-                    } else {
-                      alert("Could not get signed URL for this document.");
-                    }
-                  } catch (error) {
-                    console.error("Error fetching signed URL:", error);
-                    alert("Failed to open document.");
-                  }
-                }}
+                className="reassign-button"
+                onClick={() => setIsReassignModalOpen(true)}
               >
-                View
+                Reassign Coordinator
+              </button>
+
+              <button className="close-btn" onClick={closePlumberModal}>
+                <X size={24} />
               </button>
             </div>
-          );
-        })}
-      
-        {/* If no docs available */}
-        {!selectedPlumber.aadhaar_front &&
-          !selectedPlumber.aadhaar_back &&
-          !selectedPlumber.license_front &&
-          !selectedPlumber.license_back && (
-            <div className="modal-document-item">
-              <span
-                className="modal-document-name"
-                style={{ color: "#9ca3af" }}
-              >
-                No documents available
-              </span>
-            </div>
-          )}
-      </div>
-      
+            <div className="modal-body">
+              <div className="modal-profile-section">
+                <div className="modal-avatar-container">
+                  <div className="modal-plumber-avatar">
+                    {plumberImages[selectedPlumber.id] ? (
+                      <img
+                        src={plumberImages[selectedPlumber.id]}
+                        alt={selectedPlumber.name}
+                      />
+                    ) : (
+                      <div className="modal-avatar-placeholder">
+                        {selectedPlumber.name?.charAt(0).toUpperCase() || "P"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="modal-profile-info">
+                  <h2 className="modal-plumber-name">{selectedPlumber.name}</h2>
+                  <div className="modal-plumber-contact">
+                    <span>{selectedPlumber.email || "No email provided"}</span>
+                    <span>{selectedPlumber.phone}</span>
                   </div>
                 </div>
               </div>
-            )}
+
+              <div className="modal-details-grid">
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">License</div>
+                  <div className="modal-detail-value">
+                    {selectedPlumber.plumber_license_number || "N/A"}
+                  </div>
+                </div>
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">Aadhaar Number</div>
+                  <div className="modal-detail-value">
+                    {selectedPlumber.aadhaar_number || "N/A"}
+                  </div>
+                </div>
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">KYC Status</div>
+                  <div className="modal-detail-value">
+                    {selectedPlumber.kyc_status === "approved"
+                      ? "Approved"
+                      : "N/A"}
+                  </div>
+                </div>
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">Experience</div>
+                  <div className="modal-detail-value">
+                    {selectedPlumber.experience || "N/A"}
+                  </div>
+                </div>
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">Total Jobs</div>
+                  <div className="modal-detail-value">
+                    {getTotalJobsForPlumber(selectedPlumber.id)}
+                  </div>
+                </div>
+                <div className="modal-detail-card">
+                  <div className="modal-detail-label">Rating</div>
+                  <div className="modal-detail-value">
+                    ★ {selectedPlumber.trust || 0}
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="modal-section-title">Address</h3>
+              <div className="modal-address-text">
+                {selectedPlumber.address?.address}
+                {selectedPlumber.address?.city || ""},{" "}
+                {selectedPlumber.address?.district || ""},{" "}
+                {selectedPlumber.address?.state || ""} —{" "}
+                {selectedPlumber.address?.pin || ""}
+              </div>
+
+              <h3 className="modal-section-title">Assigned Co-Ordinator</h3>
+              <div className="modal-address-text">
+                {getCoordName(selectedPlumber.coordinator_id)}
+              </div>
+
+              <h3 className="modal-section-title">Service Area Pincodes</h3>
+              <div className="modal-address-text">
+                {selectedPlumber.service_area_pin}
+              </div>
+
+              <h3 className="modal-section-title">Documents</h3>
+              <div className="modal-documents-list">
+                {[
+                  { key: "aadhaar_front", label: "Aadhaar Front" },
+                  { key: "aadhaar_back", label: "Aadhaar Back" },
+                  { key: "license_front", label: "License Front" },
+                  { key: "license_back", label: "License Back" },
+                ].map(({ key, label }) => {
+                  const docKey = selectedPlumber[key];
+                  if (!docKey) return null;
+                  return (
+                    <div key={key} className="modal-document-item">
+                      <span className="modal-document-name">{label}</span>
+                      <button
+                        className="modal-document-link"
+                        onClick={async () => {
+                          try {
+                            const res = await api.post(
+                              `/installations/get-image`,
+                              { key: docKey },
+                            );
+                            const signedUrl =
+                              res.data?.url ||
+                              res.data?.data?.url ||
+                              res.data?.signedUrl ||
+                              null;
+
+                            if (signedUrl) {
+                              window.open(signedUrl, "_blank");
+                            } else {
+                              alert(
+                                "Could not get signed URL for this document."
+                              );
+                            }
+                          } catch (error) {
+                            console.error("Error fetching signed URL:", error);
+                            alert("Failed to open document.");
+                          }
+                        }}
+                      >
+                        View
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* If no docs available */}
+                {!selectedPlumber.aadhaar_front &&
+                  !selectedPlumber.aadhaar_back &&
+                  !selectedPlumber.license_front &&
+                  !selectedPlumber.license_back && (
+                    <div className="modal-document-item">
+                      <span
+                        className="modal-document-name"
+                        style={{ color: "#9ca3af" }}
+                      >
+                        No documents available
+                      </span>
+                    </div>
+                  )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isReassignModalOpen && (
+        <div
+          className="modal-overlay-plumber"
+          onClick={() => setIsReassignModalOpen(false)}
+        >
+          <div
+            className="modal-container-plumber"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>Reassign Coordinator</h3>
+              <button
+                className="close-btn"
+                onClick={() => setIsReassignModalOpen(false)}
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <label htmlFor="coordinator-select">
+                Select new coordinator:
+              </label>
+              <select
+                id="coordinator-select"
+                className="coordinator-select"
+                value={selectedCoordinatorId}
+                onChange={(e) => setSelectedCoordinatorId(e.target.value)}
+              >
+                <option value="">-- Choose Coordinator --</option>
+                {coordinator.map((coord) => (
+                  <option key={coord._id} value={coord._id}>
+                    {coord.name} ({coord.phone})
+                  </option>
+                ))}
+              </select>
+
+              <div className="modal-actions">
+                <button
+                  className="confirm-btn"
+                  onClick={async () => {
+                    if (!selectedCoordinatorId) {
+                      alert("Please select a coordinator.");
+                      return;
+                    }
+
+                    try {
+                      const res = await api.put(
+                        `/admin/plumbers/${selectedPlumber.id}/reassign-coordinator`,
+                        { coordinator_id: selectedCoordinatorId }
+                      );
+
+                      if (res.status === 200) {
+                        alert("Coordinator reassigned successfully!");
+
+                        setPlumbers((prev) =>
+                          prev.map((p) =>
+                            p.id === selectedPlumber.id
+                              ? { ...p, coordinator_id: selectedCoordinatorId }
+                              : p
+                          )
+                        );
+
+                        setIsReassignModalOpen(false);
+                      }
+                    } catch (err) {
+                      console.error("Error reassigning coordinator:", err);
+                      alert(
+                        err.response?.data?.message ||
+                          "Failed to reassign coordinator."
+                      );
+                    }
+                  }}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

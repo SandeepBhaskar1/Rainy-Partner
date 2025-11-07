@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "./Login.css";
+import api from "../../api/axiosInstence";
 
 const CoordinatorLogin = () => {
   const [identifier, setIdentifier] = useState("");
@@ -16,16 +17,15 @@ const CoordinatorLogin = () => {
     setError("");
 
     try {
-      const res = await axios.post(`${BACKEND_URL}/auth/coordinator-login`, {
+      const res = await api.post(`/auth/coordinator-login`, {
         identifier,
         password,
       });
 
-      const { token, coordinator, message } = res.data;
+      const { coordinator, message } = res.data;
 
-      if (token) {
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("user", JSON.stringify(coordinator));
+      if (coordinator) {
+        sessionStorage.setItem("user", JSON.stringify(coordinator));
         navigate("/");
       } else {
         setError(message || "Invalid credentials");

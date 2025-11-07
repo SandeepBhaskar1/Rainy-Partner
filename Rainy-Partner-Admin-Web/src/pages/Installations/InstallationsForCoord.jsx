@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { CirclePlus, X, ClipboardList, MapPin, Loader } from "lucide-react";
+import {
+  CirclePlus,
+  X,
+  ClipboardList,
+  MapPin,
+  Loader,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+} from "lucide-react";
 import axios from "axios";
 import "./Installations.css";
+import api from "../../api/axiosInstence";
 
 const Installations = () => {
   const [openForm, setOpenForm] = useState(false);
@@ -15,9 +25,12 @@ const Installations = () => {
   const [selectedPlumber, setSelectedPlumber] = useState("");
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [newPlumberId, setNewPlumberId] = useState("");
+  const [selectedInstallationDetails, setSelectedInstallationDetails] =
+    useState(null);
   const [assignedPlumberIds, setAssignedPlumberIds] = useState([]);
   const [userRole, setUserRole] = useState(null);
   const [signedUrls, setSignedUrls] = useState({});
+  const [toast, setToast] = useState({ show: false, message: "", type: "" });
   const [formData, setFormData] = useState({
     customerName: "",
     contact: "",
@@ -35,55 +48,46 @@ const Installations = () => {
     (value) => value.trim() !== ""
   );
 
-  // Consolidated initial data fetch
+  // Toast notification function
+  const showToast = (message, type = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: "" });
+    }, 3000);
+  };
+
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem("authToken");
-        const storedUser = localStorage.getItem("user");
-        
-        console.log("=== USER DATA DEBUG ===");
-        console.log("Stored user:", storedUser);
-        
+        const storedUser = sessionStorage.getItem("user");
         let role = null;
         let plumberIds = [];
 
-        // Get user role and coordinator data
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
-          console.log("Parsed user:", parsedUser);
-          console.log("User role:", parsedUser?.role);
-          role = parsedUser?.role?.toLowerCase(); // Normalize to lowercase
+          role = parsedUser?.role?.toLowerCase();
           setUserRole(role);
-          
-          // If coordinator, fetch their assigned plumbers
+
           if (role === "coordinator") {
-            console.log("Fetching coordinator profile...");
+            console.error("Fetching coordinator profile...");
             try {
-              const coordinatorRes = await axios.get(
-                `${BACKEND_URL}/coordinator/profile`,
-                { headers: { Authorization: `Bearer ${token}` } }
+              const coordinatorRes = await api.get(
+                `/coordinator/profile`,
               );
-              console.log("Coordinator response:", coordinatorRes.data);
               plumberIds = coordinatorRes.data?.assigned_plumbers || [];
               setAssignedPlumberIds(plumberIds);
-              console.log("Coordinator's assigned plumber IDs:", plumberIds);
             } catch (error) {
               console.error("Error fetching coordinator profile:", error);
             }
-          } else {
-            console.log("User is not a coordinator, role is:", role);
           }
-        } else {
-          console.log("No COORDINATOR data in localStorage");
         }
 
-        // Fetch installations
         try {
-          const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+          const installationsRes = await api.get(
+            `/post-leads`,
+          );
           setInstallations(installationsRes.data);
-          console.log("Installations fetched:", installationsRes.data.length);
         } catch (error) {
           console.error("Error fetching installations:", error);
           setError(true);
@@ -91,17 +95,15 @@ const Installations = () => {
 
         // Fetch plumbers based on role
         try {
-          const endpoint = role === "coordinator" 
-            ? `${BACKEND_URL}/coordinator/plumbers`
-            : `${BACKEND_URL}/admin/plumbers`;
-          
-          console.log("Fetching plumbers from:", endpoint);
-          const plumbersRes = await axios.get(endpoint, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const plumbersData = plumbersRes.data.plumbers || plumbersRes.data || [];
+          const endpoint =
+            role === "coordinator"
+              ? `${BACKEND_URL}/coordinator/plumbers`
+              : `${BACKEND_URL}/admin/plumbers`;
+
+          const plumbersRes = await api.get(endpoint);
+          const plumbersData =
+            plumbersRes.data.plumbers || plumbersRes.data || [];
           setPlumbers(plumbersData);
-          console.log("Plumbers data:", plumbersData.length, "plumbers loaded");
         } catch (error) {
           console.error("Error fetching plumbers:", error);
         }
@@ -117,7 +119,6 @@ const Installations = () => {
     fetchInitialData();
   }, [BACKEND_URL]);
 
-  // Fetch signed URLs when installations and role data are ready
   useEffect(() => {
     if (installations.length > 0 && !loading && userRole !== null) {
       fetchSignedUrls();
@@ -125,18 +126,11 @@ const Installations = () => {
   }, [installations, loading, userRole, assignedPlumberIds]);
 
   const fetchSignedUrls = async () => {
-    const token = localStorage.getItem("authToken");
-    
-    if (!token) {
-      console.warn("No auth token found for fetching signed URLs");
-      return;
-    }
-    
     const urls = {};
 
     // Get only installations that coordinator should see
     let installationsToFetch = installations;
-    
+
     if (userRole === "coordinator") {
       installationsToFetch = installations.filter((inst) => {
         // Include not-assigned (open) installations
@@ -149,77 +143,77 @@ const Installations = () => {
       });
     }
 
-    console.log("Fetching signed URLs for", installationsToFetch.length, "installations");
-
     for (const inst of installationsToFetch) {
       const { completion_images } = inst;
-      
+
       // Skip if no completion images object or all image keys are missing
-      if (!completion_images || 
-          (!completion_images.serial_number_key && 
-           !completion_images.warranty_card_key && 
-           !completion_images.installation_key)) {
-        console.log(`Skipping ${inst._id} - no completion images`);
+      if (
+        !completion_images ||
+        (!completion_images.serial_number_key &&
+          !completion_images.warranty_card_key &&
+          !completion_images.installation_key)
+      ) {
         continue;
       }
-      
+
       urls[inst._id] = {};
 
-      // Fetch serial number image
       if (completion_images.serial_number_key) {
         try {
-          const res = await axios.post(
-            `${BACKEND_URL}/co-ordinator/get-image`,
+          const res = await api.post(
+            `/co-ordinator/get-image`,
             { key: completion_images.serial_number_key },
-            { headers: { Authorization: `Bearer ${token}` } }
           );
           urls[inst._id].serial = res.data.url;
         } catch (err) {
-          console.error(`Error fetching serial image for ${inst._id}:`, err.response?.status, err.message);
+          console.error(
+            `Error fetching serial image for ${inst._id}:`,
+            err.response?.status,
+            err.message
+          );
         }
       }
 
       // Fetch warranty card image
       if (completion_images.warranty_card_key) {
         try {
-          const res = await axios.post(
-            `${BACKEND_URL}/co-ordinator/get-image`,
+          const res = await api.post(
+            `/co-ordinator/get-image`,
             { key: completion_images.warranty_card_key },
-            { headers: { Authorization: `Bearer ${token}` } }
           );
           urls[inst._id].warranty = res.data.url;
         } catch (err) {
-          console.error(`Error fetching warranty image for ${inst._id}:`, err.response?.status, err.message);
+          console.error(
+            `Error fetching warranty image for ${inst._id}:`,
+            err.response?.status,
+            err.message
+          );
         }
       }
 
       // Fetch installation image
       if (completion_images.installation_key) {
         try {
-          const res = await axios.post(
-            `${BACKEND_URL}/co-ordinator/get-image`,
+          const res = await api.post(
+            `/co-ordinator/get-image`,
             { key: completion_images.installation_key },
-            { headers: { Authorization: `Bearer ${token}` } }
           );
           urls[inst._id].installation = res.data.url;
         } catch (err) {
-          console.error(`Error fetching installation image for ${inst._id}:`, err.response?.status, err.message);
+          console.error(
+            `Error fetching installation image for ${inst._id}:`,
+            err.response?.status,
+            err.message
+          );
         }
       }
     }
 
     setSignedUrls(urls);
-    console.log("Signed URLs fetched for", Object.keys(urls).length, "installations");
   };
 
-  // Memoized filter function
   const getFilteredInstallations = useMemo(() => {
     return (status) => {
-      console.log("=== FILTERING DEBUG ===");
-      console.log("Current user role:", userRole);
-      console.log("Assigned plumber IDs:", assignedPlumberIds);
-      console.log("Filter status:", status);
-      
       let filtered = installations.filter((inst) => {
         if (status === "not-assigned") {
           return inst.status === "not-assigned";
@@ -231,26 +225,20 @@ const Installations = () => {
         return false;
       });
 
-      console.log("Filtered by status:", filtered.length);
-
-      // If coordinator, filter by assigned plumbers (except for open installations)
       if (userRole === "coordinator" && status !== "not-assigned") {
-        console.log("Applying coordinator filter...");
         filtered = filtered.filter((inst) => {
           const plumberId = String(inst.assigned_plumber_id || "");
-          console.log("Checking installation:", inst._id, "plumber:", plumberId);
-          const match = assignedPlumberIds.some((id) => String(id) === plumberId);
-          console.log("Match found:", match);
+          const match = assignedPlumberIds.some(
+            (id) => String(id) === plumberId
+          );
           return match;
         });
-        console.log("After coordinator filter:", filtered.length);
       }
 
       return filtered;
     };
   }, [installations, userRole, assignedPlumberIds]);
 
-  // Memoized filtered lists - only compute after data is loaded
   const openInstallations = useMemo(() => {
     if (loading || installations.length === 0) return [];
     return getFilteredInstallations("not-assigned");
@@ -266,7 +254,6 @@ const Installations = () => {
     return getFilteredInstallations("completed");
   }, [getFilteredInstallations, loading, installations.length]);
 
-  // Filter plumbers for coordinator - only show their assigned plumbers
   const getAvailablePlumbers = () => {
     if (userRole === "coordinator") {
       return plumbers.filter((plumber) => {
@@ -280,11 +267,22 @@ const Installations = () => {
     return plumbers.filter((p) => p.kyc_status === "approved");
   };
 
+  const formatFullDate = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const getFilteredPlumbers = () => {
     if (!selectedInstallation) return [];
-    
+
     const availablePlumbers = getAvailablePlumbers();
-    
+
     const servicePins = availablePlumbers.filter((plumber) => {
       const servicePinList = Array.isArray(plumber.service_area_pin)
         ? plumber.service_area_pin.map((p) => p.trim())
@@ -322,10 +320,10 @@ const Installations = () => {
         model_purchased: formData.model,
       };
 
-      const response = await axios.post(`${BACKEND_URL}/post-leads`, payload);
+      const response = await api.post(`/post-leads`, payload);
 
       if (response.status === 201) {
-        alert("Installation created successfully!");
+        showToast("Installation created successfully!", "success");
         setOpenForm(false);
         setFormData({
           customerName: "",
@@ -337,14 +335,14 @@ const Installations = () => {
           pincode: "",
           model: "",
         });
-        
+
         // Refresh installations
-        const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+        const installationsRes = await api.get(`${BACKEND_URL}/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
       console.error("Error creating installation:", error);
-      alert("Failed to create installation. Please check the console.");
+      showToast("Failed to create installation. Please try again.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -356,54 +354,45 @@ const Installations = () => {
     setOpenAssignModal(true);
   };
 
+  const handleViewDetails = (installation) => {
+    setSelectedInstallationDetails(installation);
+  };
+
   const handleAssignInstallation = async (plumberId) => {
     if (!plumberId) {
-      alert("Please select a plumber");
+      showToast("Please select a plumber", "warning");
       return;
     }
 
-    console.log("=== ASSIGNMENT DEBUG ===");
-    console.log("Plumber ID being sent:", plumberId);
-    console.log("Plumber ID type:", typeof plumberId);
-    
-    const plumber = plumbers.find((p) => p.id === plumberId || p._id === plumberId);
-    console.log("Plumber object found:", plumber);
-
+    const plumber = plumbers.find(
+      (p) => p.id === plumberId || p._id === plumberId
+    );
     setAssignLoading(true);
 
     try {
-      const token = localStorage.getItem("authToken");
       const payload = {
         assigned_plumber_id: plumberId,
         status: "assigned",
         assigned_on: new Date().toISOString(),
       };
 
-      console.log("Payload being sent:", payload);
-
-      const response = await axios.put(
-        `${BACKEND_URL}/post-leads/${selectedInstallation._id}/assign`,
+      const response = await api.put(
+        `/coordinator/${selectedInstallation._id}/assign`,
         payload,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
       );
 
-      console.log("Response from backend:", response.data);
-
       if (response.status === 200) {
-        alert("Plumber assigned successfully!");
+        showToast("Plumber assigned successfully!", "success");
         setOpenAssignModal(false);
         setSelectedInstallation(null);
         setSelectedPlumber("");
-        
-        // Refresh installations
-        const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+
+        const installationsRes = await api.get(`/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
       console.error("Error assigning plumber:", error);
-      alert("Failed to assign plumber. Please try again.");
+      showToast("Failed to assign plumber. Please try again.", "error");
     } finally {
       setAssignLoading(false);
     }
@@ -417,27 +406,22 @@ const Installations = () => {
     }
 
     try {
-      const token = localStorage.getItem("authToken");
-      const response = await axios.put(
-        `${BACKEND_URL}/post-leads/${installationId}/status-completed`,
+      const response = await api.put(
+        `/post-leads/${installationId}/status-completed`,
         {
           status: "completed",
         },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
       );
 
       if (response.status === 200) {
-        alert("Installation approved successfully!");
-        
-        // Refresh installations
-        const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+        showToast("Installation approved successfully!", "success");
+
+        const installationsRes = await api.get(`/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
       console.error("Error approving installation:", error);
-      alert("Failed to approve installation. Please try again.");
+      showToast("Failed to approve installation. Please try again.", "error");
     }
   };
 
@@ -448,37 +432,34 @@ const Installations = () => {
 
   const handleConfirmReassign = async () => {
     if (!newPlumberId) {
-      alert("Please select a plumber");
+      showToast("Please select a plumber", "warning");
       return;
     }
 
     try {
-      const token = localStorage.getItem("authToken");
-      console.log("Reassigning to plumber ID:", newPlumberId);
-      
-      await axios.put(
-        `${BACKEND_URL}/post-leads/${selectedInstallation._id}/reassign`,
+
+      await api.put(
+        `/coordinator/${selectedInstallation._id}/reassign`,
         {
-          status: 'assigned',
+          status: "assigned",
           assigned_plumber_id: newPlumberId,
           assigned_on: new Date().toISOString(),
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      alert("Plumber reassigned successfully!");
+      showToast("Plumber reassigned successfully!", "success");
       setShowReassignModal(false);
       setNewPlumberId("");
       setSelectedInstallation(null);
-      
-      // Refresh installations
-      const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+
+      const installationsRes = await api.get(`/post-leads`);
       setInstallations(installationsRes.data);
     } catch (error) {
       console.error("Error reassigning plumber:", error);
-      alert(error.response?.data?.message || "Failed to reassign plumber");
+      showToast(
+        error.response?.data?.message || "Failed to reassign plumber",
+        "error"
+      );
     }
   };
 
@@ -488,39 +469,39 @@ const Installations = () => {
     }
 
     try {
-      const token = localStorage.getItem("authToken");
-      await axios.put(
-        `${BACKEND_URL}/admin/installations/${installationId}/cancel`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      await api.put(
+        `/coordinator/${installationId}/cancel`,
+        {}
       );
 
-      alert("Installation cancelled successfully!");
-      
-      // Refresh installations
-      const installationsRes = await axios.get(`${BACKEND_URL}/post-leads`);
+      showToast("Installation cancelled successfully!", "success");
+
+      const installationsRes = await api.get(`/post-leads`);
       setInstallations(installationsRes.data);
     } catch (error) {
       console.error("Error canceling installation:", error);
-      alert(error.response?.data?.message || "Failed to cancel installation");
+      showToast(
+        error.response?.data?.message || "Failed to cancel installation",
+        "error"
+      );
     }
   };
 
   const getPlumberName = (plumberId) => {
     if (!plumberId) return "N/A";
-    
+
     if (plumberId.includes("(") && plumberId.includes(")")) {
       return plumberId;
     }
-    
-    const plumber = plumbers.find((p) => p.id === plumberId || p._id === plumberId);
-    
+
+    const plumber = plumbers.find(
+      (p) => p.id === plumberId || p._id === plumberId
+    );
+
     if (plumber) {
       return `${plumber.name} (${plumber.phone})`;
     }
-    
+
     return plumberId;
   };
 
@@ -553,6 +534,17 @@ const Installations = () => {
 
   return (
     <div className="installations-page">
+      {toast.show && (
+        <div className={`toast toast-${toast.type}`}>
+          <div className="toast-icon">
+            {toast.type === "success" && <CheckCircle size={20} />}
+            {toast.type === "error" && <XCircle size={20} />}
+            {toast.type === "warning" && <AlertCircle size={20} />}
+          </div>
+          <span className="toast-message">{toast.message}</span>
+        </div>
+      )}
+
       <div className="installations-container">
         <div className="installations-header">
           <h2>Installations</h2>
@@ -591,7 +583,12 @@ const Installations = () => {
                 <tbody>
                   {openInstallations.map((installation) => (
                     <tr key={installation._id}>
-                      <td className="installation-id">{installation._id}</td>
+                      <td
+                        className="installation-id clickable-id"
+                        onClick={() => handleViewDetails(installation)}
+                      >
+                        {installation._id}
+                      </td>
                       <td className="customer-name">
                         {installation.client?.name}
                       </td>
@@ -599,9 +596,7 @@ const Installations = () => {
                         {installation.client?.city},{" "}
                         {installation.client?.state}
                       </td>
-                      <td className="model">
-                        {installation.model_purchased}
-                      </td>
+                      <td className="model">{installation.model_purchased}</td>
                       <td className="created-date">
                         {formatDate(installation.created_at)}
                       </td>
@@ -649,14 +644,19 @@ const Installations = () => {
                 <tbody>
                   {inProgressInstallations.map((installation) => (
                     <tr key={installation._id}>
-                      <td className="installation-id">{installation._id}</td>
+                      <td
+                        className="installation-id clickable-id"
+                        onClick={() => handleViewDetails(installation)}
+                      >
+                        {installation._id}
+                      </td>
                       <td className="customer-name">
                         {installation.client?.name}
                       </td>
                       <td className="plumber">
                         {getPlumberName(installation.assigned_plumber_id)}
                       </td>
-                      <td className="status-badge">
+                      <td className="status-badge-installation">
                         <span
                           className={`badge ${
                             installation.status === "assigned"
@@ -723,16 +723,26 @@ const Installations = () => {
                             Approve
                           </button>
                         ) : installation.status === "assigned" ? (
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "8px",
+                              flexWrap: "wrap",
+                            }}
+                          >
                             <button
                               className="assign-btn reassign-btn"
-                              onClick={() => handleReassignPlumber(installation)}
+                              onClick={() =>
+                                handleReassignPlumber(installation)
+                              }
                             >
                               Reassign
                             </button>
                             <button
                               className="assign-cancel-btn"
-                              onClick={() => handleCancelInstallation(installation._id)}
+                              onClick={() =>
+                                handleCancelInstallation(installation._id)
+                              }
                             >
                               Cancel
                             </button>
@@ -779,7 +789,12 @@ const Installations = () => {
                 <tbody>
                   {completedInstallations.map((installation) => (
                     <tr key={installation._id}>
-                      <td className="installation-id">{installation._id}</td>
+                      <td
+                        className="installation-id clickable-id"
+                        onClick={() => handleViewDetails(installation)}
+                      >
+                        {installation._id}
+                      </td>
                       <td className="customer-name">
                         {installation.client?.name || "N/A"}
                       </td>
@@ -1034,7 +1049,6 @@ const Installations = () => {
                       value={selectedPlumber}
                       onChange={(e) => {
                         const value = e.target.value;
-                        console.log("Dropdown changed to:", value);
                         setSelectedPlumber(value);
                       }}
                       className="assign-select"
@@ -1058,7 +1072,10 @@ const Installations = () => {
                     {getFilteredPlumbers().length > 0 ? (
                       <div className="suggested-plumbers">
                         {getFilteredPlumbers().map((plumber) => (
-                          <div className="plumber-card" key={plumber.id || plumber._id}>
+                          <div
+                            className="plumber-card"
+                            key={plumber.id || plumber._id}
+                          >
                             <div className="plumber-info">
                               <h4>{plumber.name}</h4>
                               <div className="plumber-details">
@@ -1074,7 +1091,9 @@ const Installations = () => {
                             <button
                               className="assign-card-btn"
                               onClick={() =>
-                                handleAssignInstallation(plumber.id || plumber._id)
+                                handleAssignInstallation(
+                                  plumber.id || plumber._id
+                                )
                               }
                               disabled={assignLoading}
                             >
@@ -1109,67 +1128,425 @@ const Installations = () => {
           </>
         )}
 
-        {/* Reassign Plumber Modal */}
         {showReassignModal && (
           <div
-            className="modal-overlay"
+            className="reassign-modal-overlay"
             onClick={() => setShowReassignModal(false)}
           >
             <div
-              className="modal-content"
+              className="reassign-modal-container"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="modal-header">
-                <h3>Reassign Plumber</h3>
+              <div className="reassign-modal-header">
+                <div className="reassign-header-content">
+                  <div className="reassign-icon-wrapper">
+                    <span className="reassign-icon">🔄</span>
+                  </div>
+                  <div className="reassign-header-text">
+                    <h3>Reassign Plumber</h3>
+                    <p>Change the assigned plumber for this installation</p>
+                  </div>
+                </div>
                 <button
-                  className="modal-close"
+                  className="reassign-modal-close-btn"
                   onClick={() => setShowReassignModal(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="reassign-modal-body">
+                <div className="reassign-info-section">
+                  <div className="reassign-info-card">
+                    <div className="reassign-info-row">
+                      <span className="reassign-info-label">
+                        Installation ID
+                      </span>
+                      <span className="reassign-info-value">
+                        {selectedInstallation?._id}
+                      </span>
+                    </div>
+                    <div className="reassign-divider"></div>
+                    <div className="reassign-info-row">
+                      <span className="reassign-info-label">Customer</span>
+                      <span className="reassign-info-value">
+                        {selectedInstallation?.client?.name}
+                      </span>
+                    </div>
+                    <div className="reassign-divider"></div>
+                    <div className="reassign-info-row">
+                      <span className="reassign-info-label">
+                        Current Plumber
+                      </span>
+                      <span className="reassign-info-value current-plumber">
+                        {getPlumberName(
+                          selectedInstallation?.assigned_plumber_id
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="reassign-select-section">
+                  <label className="reassign-select-label">
+                    <span>Select New Plumber</span>
+                    <span className="reassign-required">*</span>
+                  </label>
+                  <div className="reassign-select-wrapper">
+                    <select
+                      value={newPlumberId}
+                      onChange={(e) => setNewPlumberId(e.target.value)}
+                      className="reassign-select-input"
+                    >
+                      <option value="">Choose a plumber...</option>
+                      {getAvailablePlumbers()
+                        .filter(
+                          (p) =>
+                            (p.id || p._id) !==
+                            selectedInstallation?.assigned_plumber_id
+                        )
+                        .map((plumber) => (
+                          <option
+                            key={plumber._id || plumber.id}
+                            value={plumber.id || plumber._id}
+                          >
+                            {plumber.name} - {plumber.phone}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  {getAvailablePlumbers().length === 0 ? (
+                    <p
+                      className="reassign-helper-text"
+                      style={{ color: "#ef4444" }}
+                    >
+                      No plumbers available for this pincode area
+                    </p>
+                  ) : !newPlumberId ? (
+                    <p className="reassign-helper-text">
+                      Please select a new plumber to continue
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="reassign-modal-footer">
+                <button
+                  className="reassign-cancel-button"
+                  onClick={() => setShowReassignModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="reassign-confirm-button"
+                  onClick={handleConfirmReassign}
+                  disabled={!newPlumberId}
+                >
+                  <span>Confirm Reassignment</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedInstallationDetails && (
+          <div
+            className="modal-overlay"
+            onClick={() => setSelectedInstallationDetails(null)}
+          >
+            <div
+              className="installation-details-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="installation-modal-header">
+                <h3>Installation Details</h3>
+                <button
+                  className="modal-close-btn"
+                  onClick={() => setSelectedInstallationDetails(null)}
                 >
                   <X size={24} />
                 </button>
               </div>
 
-              <div className="modal-body">
-                <p>
-                  <strong>Installation ID:</strong> {selectedInstallation?._id}
-                </p>
-                <p>
-                  <strong>Customer:</strong> {selectedInstallation?.client?.name}
-                </p>
-                <p>
-                  <strong>Current Plumber:</strong>{" "}
-                  {getPlumberName(selectedInstallation?.assigned_plumber_id)}
-                </p>
-
-                <div className="form-group" style={{ marginTop: "20px" }}>
-                  <label>Select New Plumber *</label>
-                  <select
-                    value={newPlumberId}
-                    onChange={(e) => setNewPlumberId(e.target.value)}
-                    className="form-select"
+              <div className="installation-modal-body">
+                <div className="installation-top-section">
+                  <div className="installation-id-badge">
+                    <span className="label">Installation ID</span>
+                    <span className="value">
+                      {selectedInstallationDetails._id}
+                    </span>
+                  </div>
+                  <div
+                    className={`status-badge-large status-${selectedInstallationDetails.status
+                      ?.toLowerCase()
+                      .replace("-", "_")}`}
                   >
-                    <option value="">Select Plumber</option>
-                    {getAvailablePlumbers()
-                      .filter((p) => (p.id || p._id) !== selectedInstallation?.assigned_plumber_id)
-                      .map((plumber) => (
-                        <option key={plumber._id || plumber.id} value={plumber.id || plumber._id}>
-                          {plumber.name} - {plumber.phone}
-                        </option>
-                      ))}
-                  </select>
+                    <span className="status-dot"></span>
+                    {selectedInstallationDetails.status === "not-assigned"
+                      ? "Not Assigned"
+                      : selectedInstallationDetails.status === "assigned"
+                      ? "Assigned"
+                      : selectedInstallationDetails.status === "under_review"
+                      ? "Under Review"
+                      : selectedInstallationDetails.status === "completed"
+                      ? "Completed"
+                      : selectedInstallationDetails.status === "cancelled"
+                      ? "Cancelled"
+                      : selectedInstallationDetails.status}
+                  </div>
                 </div>
-              </div>
 
-              <div className="modal-footer">
-                <button
-                  className="btn-cancel"
-                  onClick={() => setShowReassignModal(false)}
-                >
-                  Cancel
-                </button>
-                <button className="btn-submit" onClick={handleConfirmReassign}>
-                  Confirm Reassign
-                </button>
+                <div className="info-cards-row">
+                  <div className="info-card customer-card">
+                    <div className="icon-circle customer-icon">👤</div>
+                    <div className="info-content">
+                      <span className="info-label">Customer</span>
+                      <span className="info-name">
+                        {selectedInstallationDetails.client?.name || "N/A"}
+                      </span>
+                      <span className="info-detail">
+                        {selectedInstallationDetails.client?.phone || "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="info-card plumber-card">
+                    <div className="icon-circle plumber-icon">🔧</div>
+                    <div className="info-content-01">
+                      <span className="info-label">Plumber</span>
+                      <span className="info-name">
+                        {getPlumberName(
+                          selectedInstallationDetails.assigned_plumber_id
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="address-section">
+                  <div className="address-card">
+                    <div className="address-header">
+                      📍 Installation Address
+                    </div>
+                    <div className="address-content">
+                      {selectedInstallationDetails.client?.address || "N/A"}
+                      <br />
+                      {selectedInstallationDetails.client?.city},{" "}
+                      {selectedInstallationDetails.client?.district}
+                      <br />
+                      {selectedInstallationDetails.client?.state} -{" "}
+                      {selectedInstallationDetails.client?.pincode}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="model-card">
+                  <div className="model-label">Model Purchased</div>
+                  <div className="model-value">
+                    {selectedInstallationDetails.model_purchased || "N/A"}
+                  </div>
+                </div>
+
+                {(selectedInstallationDetails.status === "under_review" ||
+                  selectedInstallationDetails.status === "completed") && (
+                  <div className="images-section">
+                    <h4 className="section-title">📸 Completion Images</h4>
+                    <div className="images-grid">
+                      <div className="image-card">
+                        <div className="image-card-label">Serial Number</div>
+                        {signedUrls[selectedInstallationDetails._id]?.serial ? (
+                          <>
+                            <img
+                              src={
+                                signedUrls[selectedInstallationDetails._id]
+                                  .serial
+                              }
+                              alt="Serial Number"
+                              className="image-preview"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .serial,
+                                  "_blank"
+                                )
+                              }
+                            />
+                            <button
+                              className="view-image-btn"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .serial,
+                                  "_blank"
+                                )
+                              }
+                            >
+                              View Full Image
+                            </button>
+                          </>
+                        ) : (
+                          <button className="view-image-btn" disabled>
+                            Not Available
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="image-card">
+                        <div className="image-card-label">Warranty Card</div>
+                        {signedUrls[selectedInstallationDetails._id]
+                          ?.warranty ? (
+                          <>
+                            <img
+                              src={
+                                signedUrls[selectedInstallationDetails._id]
+                                  .warranty
+                              }
+                              alt="Warranty Card"
+                              className="image-preview"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .warranty,
+                                  "_blank"
+                                )
+                              }
+                            />
+                            <button
+                              className="view-image-btn"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .warranty,
+                                  "_blank"
+                                )
+                              }
+                            >
+                              View Full Image
+                            </button>
+                          </>
+                        ) : (
+                          <button className="view-image-btn" disabled>
+                            Not Available
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="image-card">
+                        <div className="image-card-label">
+                          Installation Photo
+                        </div>
+                        {signedUrls[selectedInstallationDetails._id]
+                          ?.installation ? (
+                          <>
+                            <img
+                              src={
+                                signedUrls[selectedInstallationDetails._id]
+                                  .installation
+                              }
+                              alt="Installation"
+                              className="image-preview"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .installation,
+                                  "_blank"
+                                )
+                              }
+                            />
+                            <button
+                              className="view-image-btn"
+                              onClick={() =>
+                                window.open(
+                                  signedUrls[selectedInstallationDetails._id]
+                                    .installation,
+                                  "_blank"
+                                )
+                              }
+                            >
+                              View Full Image
+                            </button>
+                          </>
+                        ) : (
+                          <button className="view-image-btn" disabled>
+                            Not Available
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="dates-grid">
+                  <div className="date-card">
+                    <span className="date-label">Created At</span>
+                    <span className="date-value">
+                      {formatFullDate(selectedInstallationDetails.created_at)}
+                    </span>
+                  </div>
+
+                  {selectedInstallationDetails.assigned_on && (
+                    <div className="date-card">
+                      <span className="date-label">Assigned On</span>
+                      <span className="date-value">
+                        {formatFullDate(
+                          selectedInstallationDetails.assigned_on
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInstallationDetails.completion_submitted_at && (
+                    <div className="date-card">
+                      <span className="date-label">Completion Submitted</span>
+                      <span className="date-value">
+                        {formatFullDate(
+                          selectedInstallationDetails.completion_submitted_at
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInstallationDetails.approved_at && (
+                    <div className="date-card">
+                      <span className="date-label">Approved At</span>
+                      <span className="date-value">
+                        {formatFullDate(
+                          selectedInstallationDetails.approved_at
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInstallationDetails.rejected_at && (
+                    <div className="date-card">
+                      <span className="date-label">Rejected At</span>
+                      <span className="date-value">
+                        {formatFullDate(
+                          selectedInstallationDetails.rejected_at
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedInstallationDetails.cancelled_at && (
+                    <div className="date-card">
+                      <span className="date-label">Cancelled At</span>
+                      <span className="date-value">
+                        {formatFullDate(
+                          selectedInstallationDetails.cancelled_at
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {selectedInstallationDetails.rejection_reason && (
+                  <div className="cancelled-reason-card">
+                    <span className="reason-label">Rejection Reason</span>
+                    <span className="reason-text">
+                      {selectedInstallationDetails.rejection_reason}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -283,9 +283,7 @@
 }
 
 /* Status Badges */
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
+.status-badge-installation {
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
@@ -459,7 +457,7 @@
 }
 
 /* Modal Styles */
-.modal-overlay {
+.modal-overlay-plumber {
   position: fixed;
   top: 0;
   left: 0;
@@ -473,20 +471,21 @@
   padding: 20px;
 }
 
-.modal-container {
+.modal-container-plumber {
   background: white;
   border-radius: 16px;
-  width: 100%;
-  max-width: 700px;
+  width: 50rem;
+  max-width: 900px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
+  border-radius: 16px;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border: 1px solid #e5e7eb;
 }
 
 .modal-header h3 {
@@ -494,6 +493,14 @@
   font-weight: 600;
   color: #111827;
   margin: 0;
+}
+
+.reassign-button{
+  padding: 14px 22px;
+  border-radius: 16px;
+  border: none;
+  background-color: rgb(0, 132, 255);
+  color: white;
 }
 
 .close-btn {
@@ -519,6 +526,34 @@
   max-height: calc(90vh - 80px);
   overflow-y: auto;
 }
+
+.coordinator-select {
+  width: 100%;
+  padding: 8px;
+  margin: 12px 0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-btn {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.confirm-btn:hover {
+  background-color: #1d4ed8;
+}
+
 
 /* Profile section - side by side layout */
 .modal-profile-section {

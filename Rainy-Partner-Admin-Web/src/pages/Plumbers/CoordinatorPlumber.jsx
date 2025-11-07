@@ -12,6 +12,7 @@ import {
   Loader,
 } from "lucide-react";
 import "./Plumbers.css";
+import api from "../../api/axiosInstence";
 
 const coordinatorPlumbers = () => {
   const [plumbers, setPlumbers] = useState([]);
@@ -40,32 +41,24 @@ const coordinatorPlumbers = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
-  const token = localStorage.getItem("authToken");
 
   useEffect(() => {
-    if (!token) {
-      setError("Authentication token not found");
-      setLoading(false);
-      return;
-    }
 
     const fetchData = async () => {
       try {
-        // First fetch coordinator data to get assigned plumber IDs
-        const coordinatorRes = await axios.get(`${BACKEND_URL}/coordinator/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const coordinatorRes = await api.get(
+          `/coordinator/profile`
+        );
 
         const coordinatorData = coordinatorRes.data;
-        const plumberIds = coordinatorData?.assigned_plumbers || 
-                          coordinatorData?.data?.assigned_plumbers || 
-                          coordinatorData?.assignedPlumbers || [];
-        
-        setAssignedPlumberIds(plumberIds);
-        console.log("Coordinator Data:", coordinatorData);
-        console.log("Assigned Plumber IDs from DB:", plumberIds);
+        const plumberIds =
+          coordinatorData?.assigned_plumbers ||
+          coordinatorData?.data?.assigned_plumbers ||
+          coordinatorData?.assignedPlumbers ||
+          [];
 
-        // If no plumbers assigned, show empty state
+        setAssignedPlumberIds(plumberIds);
+
         if (plumberIds.length === 0) {
           setLoading(false);
           setPlumbers([]);
@@ -73,17 +66,10 @@ const coordinatorPlumbers = () => {
           return;
         }
 
-        // Then fetch all other data
         const [filterRes, plumbersRes, leadsRes] = await Promise.all([
-          axios.get(`${BACKEND_URL}/coordinator/plumbers/filters`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${BACKEND_URL}/coordinator/plumbers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${BACKEND_URL}/post-leads`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          api.get(`/coordinator/plumbers/filters`),
+          api.get(`/coordinator/plumbers`),
+          api.get(`/post-leads`),
         ]);
 
         const fetchedStates = filterRes.data.states || [];
@@ -92,26 +78,26 @@ const coordinatorPlumbers = () => {
         const fetchedPlumbers = plumbersRes.data.plumbers || [];
         const fetchedLeads = leadsRes.data.installations || leadsRes.data || [];
 
-        console.log("All fetched plumbers:", fetchedPlumbers);
-        console.log("Sample plumber IDs:", fetchedPlumbers.slice(0, 3).map(p => ({ id: p.id, _id: p._id, userId: p.userId })));
+        const myPlumbers = fetchedPlumbers.filter((plumber) => {
+          const plumberId = String(
+            plumber.id || plumber._id || plumber.userId || ""
+          );
+          const plumberObjectId = String(
+            plumber._id?.$oid || plumber._id || ""
+          );
 
-        // Filter plumbers to only show those assigned to this coordinator
-        // Try multiple ID formats
-        const myPlumbers = fetchedPlumbers.filter(plumber => {
-          const plumberId = String(plumber.id || plumber._id || plumber.userId || '');
-          const plumberObjectId = String(plumber._id?.$oid || plumber._id || '');
-          
-          return plumberIds.some(assignedId => {
+          return plumberIds.some((assignedId) => {
             const assignedIdStr = String(assignedId);
-            return plumberId === assignedIdStr || 
-                   plumberObjectId === assignedIdStr ||
-                   plumber.userId === assignedIdStr;
+            return (
+              plumberId === assignedIdStr ||
+              plumberObjectId === assignedIdStr ||
+              plumber.userId === assignedIdStr
+            );
           });
         });
 
         setStates(fetchedStates);
         setPlumbers(myPlumbers);
-        console.log("Filtered Plumbers:", myPlumbers);
 
         setLeads(fetchedLeads);
 
@@ -147,45 +133,39 @@ const coordinatorPlumbers = () => {
     };
 
     fetchData();
-  }, [BACKEND_URL, token]);
+  }, [BACKEND_URL]);
 
-useEffect(() => {
-  const fetchImages = async () => {
-    // Filter plumbers that have profile images
-    const plumbersWithProfiles = plumbers.filter(p => p.profile);
-    
-    if (plumbersWithProfiles.length === 0) {
-      return;
-    }
+  useEffect(() => {
+    const fetchImages = async () => {
+      const plumbersWithProfiles = plumbers.filter((p) => p.profile);
 
-    try {
-      // Single API call with all keys
-      const keys = plumbersWithProfiles.map(p => p.profile);
-      
-      const res = await axios.post(
-        `${BACKEND_URL}/coordinator/get-multiple-plumber-profiles`,
-        { keys },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (plumbersWithProfiles.length === 0) {
+        return;
+      }
 
-      // Map URLs back to plumber IDs
-      const images = {};
-      plumbersWithProfiles.forEach((plumber) => {
-        const imageUrl = res.data.urls[plumber.profile];
-        if (imageUrl) {
-          images[plumber.id] = imageUrl;
-        }
-      });
+      try {
+        const keys = plumbersWithProfiles.map((p) => p.profile);
 
-      console.log("Fetched all images in one request:", images);
-      setPlumberImages(images);
-    } catch (err) {
-      console.error("Error fetching plumber images:", err);
-    }
-  };
+        const res = await api.post(
+          `/coordinator/get-multiple-plumber-profiles`,
+          { keys },
+        );
 
-  if (plumbers.length) fetchImages();
-}, [plumbers, BACKEND_URL, token]);
+        const images = {};
+        plumbersWithProfiles.forEach((plumber) => {
+          const imageUrl = res.data.urls[plumber.profile];
+          if (imageUrl) {
+            images[plumber.id] = imageUrl;
+          }
+        });
+        setPlumberImages(images);
+      } catch (err) {
+        console.error("Error fetching plumber images:", err);
+      }
+    };
+
+    if (plumbers.length) fetchImages();
+  }, [plumbers, BACKEND_URL]);
 
   useEffect(() => {
     let filteredDistricts = [];
@@ -360,7 +340,6 @@ useEffect(() => {
     setIsModalOpen(false);
   };
 
-
   const getTotalJobsForPlumber = (plumberId) => {
     if (!plumberId || !leads || leads.length === 0) {
       return 0;
@@ -397,8 +376,8 @@ useEffect(() => {
 
   if (loading)
     return (
-        <div className="loading-spinner">
-            <Loader size={32} className="spinner-icon" />
+      <div className="loading-spinner">
+        <Loader size={32} className="spinner-icon" />
         <p>Loading plumbers...</p>
       </div>
     );
@@ -413,7 +392,6 @@ useEffect(() => {
   return (
     <div className="plumbers-page">
       <div className="plumbers-container">
-        {/* Filters Section */}
         <div className="filters-section">
           <div className="filters-header">
             <div className="filters-title">
@@ -494,7 +472,6 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Currently Assigned Plumbers */}
         {assignedPlumbers.length > 0 && (
           <div className="assigned-section">
             <div className="section-header">
@@ -508,6 +485,7 @@ useEffect(() => {
               <table className="modern-table">
                 <thead>
                   <tr>
+                    <th>ID</th>
                     <th>Plumber</th>
                     <th>City</th>
                     <th>Installation</th>
@@ -521,8 +499,12 @@ useEffect(() => {
                     );
                     return (
                       <tr key={`${plumber.id}-${plumber.installation_id}`}>
+                        <td>{plumber.user_id || "N/A"}</td>
                         <td>
-                          <button className="plumber-link" onClick={() => openPlumberModal(plumber)}>
+                          <button
+                            className="plumber-link"
+                            onClick={() => openPlumberModal(plumber)}
+                          >
                             {plumber.name}
                           </button>
                         </td>
@@ -542,7 +524,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Grouped Plumbers Section */}
         <div className="grouped-section">
           <div className="section-header">
             <Users size={20} />
@@ -652,10 +633,8 @@ useEffect(() => {
                                                 return (
                                                   <tr key={plumber.id}>
                                                     <td className="plumber-id-cell">
-                                                      {plumber.plumber_id ||
-                                                        plumber.id
-                                                          .slice(-6)
-                                                          .toUpperCase()}
+                                                      {
+                                                        plumber.user_id.toUpperCase()}
                                                     </td>
                                                     <td>
                                                       <div className="plumber-info">
@@ -682,8 +661,16 @@ useEffect(() => {
                                                         </div>
                                                         <div className="plumber-details">
                                                           <div className="plumber-name">
-                                                          <button className="name-button" onClick={() => openPlumberModal(plumber)}>{plumber.name}</button>
-                                                            
+                                                            <button
+                                                              className="name-button"
+                                                              onClick={() =>
+                                                                openPlumberModal(
+                                                                  plumber
+                                                                )
+                                                              }
+                                                            >
+                                                              {plumber.name}
+                                                            </button>
                                                           </div>
                                                           <div className="plumber-phone">
                                                             {plumber.phone}
@@ -722,8 +709,38 @@ useEffect(() => {
                                                       )}
                                                     </td>
                                                     <td className="delete-cell">
-                                                      <button className="delete-btn">
-                                                        <Trash2 size={16} />
+                                                      <button
+                                                        className="delete-btn"
+                                                        onClick={async () => {
+                                                          const confirmed =
+                                                            window.confirm(
+                                                              "Are you sure you want to delete this plumber?"
+                                                            );
+                                                          if (!confirmed)
+                                                            return;
+
+                                                          try {
+                                                            const response =
+                                                              await api.put(
+                                                                `/coordinator/plumber/${plumber.id}/delete`,
+                                                                
+                                                              );
+
+                                                            alert(
+                                                              "Plumber deleted successfully."
+                                                            );
+                                                          } catch (error) {
+                                                            console.error(
+                                                              "Error deleting plumber:",
+                                                              error
+                                                            );
+                                                            alert(
+                                                              "Failed to delete plumber. Try again."
+                                                            );
+                                                          }
+                                                        }}
+                                                      >
+                                                        <Trash2 size={16} />{" "}
                                                         Delete
                                                       </button>
                                                     </td>
@@ -752,12 +769,9 @@ useEffect(() => {
         </div>
       </div>
 
-{isModalOpen && selectedPlumber && (
+      {isModalOpen && selectedPlumber && (
         <div className="modal-overlay" onClick={closePlumberModal}>
-          <div
-            className="modal-container"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>KYC Details — {selectedPlumber.name}</h3>
               <button className="close-btn" onClick={closePlumberModal}>
@@ -765,7 +779,6 @@ useEffect(() => {
               </button>
             </div>
             <div className="modal-body">
-              {/* Profile Section */}
               <div className="modal-profile-section">
                 <div className="modal-avatar-container">
                   <div className="modal-plumber-avatar">
@@ -807,7 +820,9 @@ useEffect(() => {
                 <div className="modal-detail-card">
                   <div className="modal-detail-label">KYC Status</div>
                   <div className="modal-detail-value">
-                    {selectedPlumber.kyc_status === 'approved' ? 'Approved' : "N/A"}
+                    {selectedPlumber.kyc_status === "approved"
+                      ? "Approved"
+                      : "N/A"}
                   </div>
                 </div>
                 <div className="modal-detail-card">
@@ -830,11 +845,13 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* Address Section */}
               <h3 className="modal-section-title">Address</h3>
               <div className="modal-address-text">
                 {selectedPlumber.address?.address}
-                {selectedPlumber.address?.city || ""}, {selectedPlumber.address?.district || ""}, {selectedPlumber.address?.state || ""} — {selectedPlumber.address?.pin || ""}
+                {selectedPlumber.address?.city || ""},{" "}
+                {selectedPlumber.address?.district || ""},{" "}
+                {selectedPlumber.address?.state || ""} —{" "}
+                {selectedPlumber.address?.pin || ""}
               </div>
 
               <h3 className="modal-section-title">Service Area Pincodes</h3>
@@ -842,70 +859,66 @@ useEffect(() => {
                 {selectedPlumber.service_area_pin}
               </div>
 
-              {/* Documents Section */}
-{/* 📄 Documents Section */}
-<h3 className="modal-section-title">Documents</h3>
-<div className="modal-documents-list">
-  {[
-    { key: "aadhaar_front", label: "Aadhaar Front" },
-    { key: "aadhaar_back", label: "Aadhaar Back" },
-    { key: "license_front", label: "License Front" },
-    { key: "license_back", label: "License Back" },
-  ].map(({ key, label }) => {
-    const docKey = selectedPlumber[key];
-    if (!docKey) return null;
-    return (
-      <div key={key} className="modal-document-item">
-        <span className="modal-document-name">{label}</span>
-        <button
-          className="modal-document-link"
-          onClick={async () => {
-            try {
-              const token = localStorage.getItem("authToken");
-              const res = await axios.post(
-                `${BACKEND_URL}/co-ordinator/get-image`,
-                { key: docKey },
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-              const signedUrl =
-                res.data?.url ||
-                res.data?.data?.url ||
-                res.data?.signedUrl ||
-                null;
+              <h3 className="modal-section-title">Documents</h3>
+              <div className="modal-documents-list">
+                {[
+                  { key: "aadhaar_front", label: "Aadhaar Front" },
+                  { key: "aadhaar_back", label: "Aadhaar Back" },
+                  { key: "license_front", label: "License Front" },
+                  { key: "license_back", label: "License Back" },
+                ].map(({ key, label }) => {
+                  const docKey = selectedPlumber[key];
+                  if (!docKey) return null;
+                  return (
+                    <div key={key} className="modal-document-item">
+                      <span className="modal-document-name">{label}</span>
+                      <button
+                        className="modal-document-link"
+                        onClick={async () => {
+                          try {
+                            const res = await api.post(
+                              `/co-ordinator/get-image`,
+                              { key: docKey },
+                            );
+                            const signedUrl =
+                              res.data?.url ||
+                              res.data?.data?.url ||
+                              res.data?.signedUrl ||
+                              null;
 
-              if (signedUrl) {
-                window.open(signedUrl, "_blank");
-              } else {
-                alert("Could not get signed URL for this document.");
-              }
-            } catch (error) {
-              console.error("Error fetching signed URL:", error);
-              alert("Failed to open document.");
-            }
-          }}
-        >
-          View
-        </button>
-      </div>
-    );
-  })}
+                            if (signedUrl) {
+                              window.open(signedUrl, "_blank");
+                            } else {
+                              alert(
+                                "Could not get signed URL for this document."
+                              );
+                            }
+                          } catch (error) {
+                            console.error("Error fetching signed URL:", error);
+                            alert("Failed to open document.");
+                          }
+                        }}
+                      >
+                        View
+                      </button>
+                    </div>
+                  );
+                })}
 
-  {/* If no docs available */}
-  {!selectedPlumber.aadhaar_front &&
-    !selectedPlumber.aadhaar_back &&
-    !selectedPlumber.license_front &&
-    !selectedPlumber.license_back && (
-      <div className="modal-document-item">
-        <span
-          className="modal-document-name"
-          style={{ color: "#9ca3af" }}
-        >
-          No documents available
-        </span>
-      </div>
-    )}
-</div>
-
+                {!selectedPlumber.aadhaar_front &&
+                  !selectedPlumber.aadhaar_back &&
+                  !selectedPlumber.license_front &&
+                  !selectedPlumber.license_back && (
+                    <div className="modal-document-item">
+                      <span
+                        className="modal-document-name"
+                        style={{ color: "#9ca3af" }}
+                      >
+                        No documents available
+                      </span>
+                    </div>
+                  )}
+              </div>
             </div>
           </div>
         </div>

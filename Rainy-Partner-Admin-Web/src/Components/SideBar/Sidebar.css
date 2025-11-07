@@ -162,3 +162,24 @@
   line-height: 1.6;
   color: #52525b;
 }
+
+.logout-button{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.logout-button button {
+  width: 90%;
+  padding: 10px;
+  border-radius: 16px;
+  border: none;
+  background-color: red;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.logout-button button:hover{
+  transform: scale(1.01);
+}

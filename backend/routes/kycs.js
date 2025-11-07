@@ -1,48 +1,49 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const User = require('../models/User');
-const { verifyAdminToken } = require('../middleware/auth');
+const User = require("../models/User");
+const { verifyAdminToken } = require("../middleware/auth");
 
-router.get('/kyc-approvals', async (req, res) => {
-    try {
-        const pending = await User.find({ kyc_status: 'pending' });
-        const rejected = await User.find({ kyc_status: 'rejected' });
+router.get("/kyc-approvals", async (req, res) => {
+  try {
+    const pending = await User.find({ kyc_status: "pending" });
+    const rejected = await User.find({ kyc_status: "rejected" });
 
-        const formatKYCData = (kycList) => {
-            return kycList.map(user => ({
-                id: user._id,
-                name: user.name,
-                address: user.address,
-                aadhaar_front: user.aadhaar_front,
-                aadhaar_back: user.aadhaar_back,
-                license_front: user.license_front,
-                license_back: user.license_back,
-                status: user.kyc_status,
-                needs_onboarding: user.needs_onboarding,
-                agreement_status: user.agreement_status
-            }));
-        };
+    const formatKYCData = (kycList) => {
+      return kycList.map((user) => ({
+        id: user._id,
+        user_id: user.user_id,
+        name: user.name,
+        address: user.address,
+        aadhaar_front: user.aadhaar_front,
+        aadhaar_back: user.aadhaar_back,
+        license_front: user.license_front,
+        license_back: user.license_back,
+        status: user.kyc_status,
+        needs_onboarding: user.needs_onboarding,
+        agreement_status: user.agreement_status,
+      }));
+    };
 
-        res.json({
-            pending: formatKYCData(pending),
-            rejected: formatKYCData(rejected),
-        });
-    } catch (error) {
-        console.error('Error fetching KYC approvals:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+    res.json({
+      pending: formatKYCData(pending),
+      rejected: formatKYCData(rejected),
+    });
+  } catch (error) {
+    console.error("Error fetching KYC approvals:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
-router.post('/approve', async (req, res) => {
+router.post("/approve", async (req, res) => {
   const { id, coordinator_id } = req.body;
 
   try {
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
-    user.kyc_status = 'approved';
+    user.kyc_status = "approved";
     user.coordinator_id = coordinator_id;
     user.approvedAt = new Date();
     await user.save();
@@ -53,40 +54,46 @@ router.post('/approve', async (req, res) => {
         coordinator.assigned_plumbers = [];
       }
 
-      if (!coordinator.assigned_plumbers.includes(user._id)) {
+      const alreadyAssigned = coordinator.assigned_plumbers.some((p) =>
+        p.equals(user._id)
+      );
+
+      if (!alreadyAssigned) {
         coordinator.assigned_plumbers.push(user._id);
         await coordinator.save();
       }
     }
 
-    res.json({ message: 'KYC approved and plumber assigned successfully', id: user._id });
+    res.json({
+      message: "KYC approved and plumber assigned successfully",
+      id: user._id,
+    });
   } catch (error) {
-    console.error('Error approving KYC:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error approving KYC:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-
-router.post('/reject', async (req, res) => {
-    const { id } = req.body;
-    try {
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        user.kyc_status = 'rejected';
-        await user.save();
-        res.json({ message: 'KYC Rejected', id: user._id });
-    } catch (error) {
-        console.error('Error rejecting KYC:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }   
+router.post("/reject", async (req, res) => {
+  const { id } = req.body;
+  try {
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    user.kyc_status = "rejected";
+    await user.save();
+    res.json({ message: "KYC Rejected", id: user._id });
+  } catch (error) {
+    console.error("Error rejecting KYC:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 router.get("/:id", verifyAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const kyc = await User.findById( id );
+    const kyc = await User.findById(id);
 
     if (!kyc) {
       return res.status(404).json({ message: "KYC not found for this user" });
@@ -100,4 +107,3 @@ router.get("/:id", verifyAdminToken, async (req, res) => {
 });
 
 module.exports = router;
-

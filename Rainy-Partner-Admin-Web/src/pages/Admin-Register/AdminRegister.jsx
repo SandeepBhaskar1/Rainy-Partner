@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import "./AdminRegister.css";
+import api from "../../api/axiosInstence";
 
 const AdminRegister = () => {
   const [formData, setFormData] = useState({
@@ -13,13 +14,10 @@ const AdminRegister = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const API_URL = "http://localhost:8001/api/auth/admin-register"; // change if deployed
+  const API_URL = `${import.meta.env.VITE_APP_BACKEND_URL}/auth/admin-register`;
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
@@ -27,22 +25,27 @@ const AdminRegister = () => {
     setLoading(true);
     setMessage("");
 
+    // Basic frontend validation
+    if (!formData.email || !formData.password) {
+      setMessage("❌ Please fill out all required fields.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.phone && !/^[6-9]\d{9}$/.test(formData.phone)) {
+      setMessage("❌ Invalid phone number format.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await axios.post(API_URL, formData);
       setMessage(`✅ ${res.data.message}`);
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        password: "",
-      });
+      setFormData({ name: "", email: "", phone: "", password: "" });
     } catch (err) {
       console.error(err);
       setMessage(
-        `❌ ${
-          err.response?.data?.detail ||
-          "Something went wrong. Please try again."
-        }`
+        `❌ ${err.response?.data?.detail || err.message || "Something went wrong."}`
       );
     } finally {
       setLoading(false);
@@ -61,7 +64,6 @@ const AdminRegister = () => {
             placeholder="Enter name"
             value={formData.name}
             onChange={handleChange}
-            required
           />
 
           <label>Email</label>

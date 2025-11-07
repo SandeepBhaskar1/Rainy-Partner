@@ -219,13 +219,6 @@ export default function PlaceOrderScreen() {
 
             {products &&
               products.map((product) => {
-                // Debug logging
-                console.log(`Product ${product.code}:`, {
-                  hasImage: !!product.image,
-                  imageUrl: product.image,
-                  imageType: typeof product.image,
-                });
-
                 return (
                   <View key={product.code} style={styles.productCard}>
                     <View style={styles.productImageContainer}>
