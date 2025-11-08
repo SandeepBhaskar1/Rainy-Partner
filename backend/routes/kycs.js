@@ -55,7 +55,7 @@ router.post("/approve", async (req, res) => {
       }
 
       const alreadyAssigned = coordinator.assigned_plumbers.some((p) =>
-        p.equals(user._id)
+        p.toString() === user._id.toString()
       );
 
       if (!alreadyAssigned) {

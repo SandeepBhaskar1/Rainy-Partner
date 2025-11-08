@@ -39,19 +39,35 @@ const Toast = ({ message, type, onClose }) => {
   );
 };
 
-const ConfirmDialog = ({ isOpen, title, message, onConfirm, onCancel, loading }) => {
+const ConfirmDialog = ({
+  isOpen,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  loading,
+}) => {
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="confirm-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="confirm-title">
+      <div
+        className="confirm-dialog"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="confirm-title"
+      >
         <h3 id="confirm-title">{title}</h3>
         <p>{message}</p>
         <div className="confirm-actions">
           <button onClick={onCancel} disabled={loading} className="btn-cancel">
             Cancel
           </button>
-          <button onClick={onConfirm} disabled={loading} className="btn-confirm">
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="btn-confirm"
+          >
             {loading ? "Processing..." : "Confirm"}
           </button>
         </div>
@@ -68,8 +84,8 @@ const validators = {
 };
 
 const sanitizeInput = (input) => {
-  if (typeof input !== 'string') return input;
-  return input.replace(/[<>]/g, '');
+  if (typeof input !== "string") return input;
+  return input.replace(/[<>]/g, "");
 };
 
 const Orders = () => {
@@ -90,7 +106,7 @@ const Orders = () => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState(null);
-  
+
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -113,6 +129,7 @@ const Orders = () => {
     sameAsBilling: false,
     model: "",
     quantity: 1,
+    products: [{ model: "", quantity: 1 }],
   });
 
   const backendUrl = import.meta.env.VITE_APP_BACKEND_URL;
@@ -175,7 +192,7 @@ const Orders = () => {
 
       const response = await apiCall("get", "/coordinator/profile");
       const assignedPlumbers = response.assigned_plumbers || [];
-      
+
       setAssignedPlumberIds(assignedPlumbers);
     } catch (error) {
       console.error("Error fetching user data:", error);
@@ -197,9 +214,16 @@ const Orders = () => {
 
       const [ordersResponse, plumbersResponse, productsResponse] =
         await Promise.allSettled([
-          apiCall("get", "/coordinator/orders", null, { params, signal: abortControllerRef.current.signal }),
-          apiCall("get", "/coordinator/plumbers", null, { signal: abortControllerRef.current.signal }),
-          apiCall("get", "/products", null, { signal: abortControllerRef.current.signal }),
+          apiCall("get", "/coordinator/orders", null, {
+            params,
+            signal: abortControllerRef.current.signal,
+          }),
+          apiCall("get", "/coordinator/plumbers", null, {
+            signal: abortControllerRef.current.signal,
+          }),
+          apiCall("get", "/products", null, {
+            signal: abortControllerRef.current.signal,
+          }),
         ]);
 
       let ordersData = [];
@@ -251,7 +275,7 @@ const Orders = () => {
 
       setOrders(filteredOrders);
     } catch (error) {
-      if (error.name === 'AbortError') return;
+      if (error.name === "AbortError") return;
       console.error("Error fetching orders:", error);
       setError(error.response?.data?.detail || "Failed to load orders");
       showToast("Failed to load orders", "error");
@@ -267,26 +291,26 @@ const Orders = () => {
     }, 2000);
   };
 
-    const getStatusBadgeClass = (status) => {
-  switch (status) {
-    case "Order-Placed":
-      return "Order-Placed";
-    case "Payment-Completed":
-      return "Payment-Completed";
-    case "Dispatched":
-      return "Dispatched";
-    case "Fulfilled":
-      return "Fulfilled";
-    case "Cancelled":
-      return "Cancelled";
-    default:
-      return "";
-  }
-};
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case "Order-Placed":
+        return "Order-Placed";
+      case "Payment-Completed":
+        return "Payment-Completed";
+      case "Dispatched":
+        return "Dispatched";
+      case "Fulfilled":
+        return "Fulfilled";
+      case "Cancelled":
+        return "Cancelled";
+      default:
+        return "";
+    }
+  };
 
   const getFilteredOrders = useCallback(() => {
     if (!Array.isArray(orders)) return [];
-    
+
     if (!searchQuery.trim()) return orders;
 
     const query = searchQuery.toLowerCase();
@@ -295,7 +319,7 @@ const Orders = () => {
       const plumberName = getPlumberName(order).toLowerCase();
       const customerName = getCustomerName(order).toLowerCase();
       const clientPhone = (order.client?.phone || "").toLowerCase();
-      
+
       return (
         orderId.includes(query) ||
         plumberName.includes(query) ||
@@ -319,12 +343,15 @@ const Orders = () => {
     return approvedPlumbers;
   }, [plumbers, assignedPlumberIds]);
 
-  const getProductNameById = useCallback((productId) => {
-    const product = products.find(
-      (p) => (p.code || p._id || p.id || p.product_id) === productId
-    );
-    return product ? product.name : productId;
-  }, [products]);
+  const getProductNameById = useCallback(
+    (productId) => {
+      const product = products.find(
+        (p) => (p.code || p._id || p.id || p.product_id) === productId
+      );
+      return product ? product.name : productId;
+    },
+    [products]
+  );
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
@@ -380,11 +407,19 @@ const Orders = () => {
         parts.push(b.city);
         seen.add(b.city.toLowerCase().trim());
       }
-      if (b.district && b.district.trim() && !seen.has(b.district.toLowerCase().trim())) {
+      if (
+        b.district &&
+        b.district.trim() &&
+        !seen.has(b.district.toLowerCase().trim())
+      ) {
         parts.push(b.district);
         seen.add(b.district.toLowerCase().trim());
       }
-      if (b.state && b.state.trim() && !seen.has(b.state.toLowerCase().trim())) {
+      if (
+        b.state &&
+        b.state.trim() &&
+        !seen.has(b.state.toLowerCase().trim())
+      ) {
         parts.push(b.state);
         seen.add(b.state.toLowerCase().trim());
       }
@@ -413,11 +448,19 @@ const Orders = () => {
         parts.push(s.city);
         seen.add(s.city.toLowerCase().trim());
       }
-      if (s.district && s.district.trim() && !seen.has(s.district.toLowerCase().trim())) {
+      if (
+        s.district &&
+        s.district.trim() &&
+        !seen.has(s.district.toLowerCase().trim())
+      ) {
         parts.push(s.district);
         seen.add(s.district.toLowerCase().trim());
       }
-      if (s.state && s.state.trim() && !seen.has(s.state.toLowerCase().trim())) {
+      if (
+        s.state &&
+        s.state.trim() &&
+        !seen.has(s.state.toLowerCase().trim())
+      ) {
         parts.push(s.state);
         seen.add(s.state.toLowerCase().trim());
       }
@@ -434,10 +477,12 @@ const Orders = () => {
 
   const validateField = (name, value) => {
     const sanitized = sanitizeInput(value);
-    
+
     switch (name) {
       case "client_name":
-        return validators.minLength(sanitized, 2) ? null : "Name must be at least 2 characters";
+        return validators.minLength(sanitized, 2)
+          ? null
+          : "Name must be at least 2 characters";
       case "client_phone":
         return validators.phone(sanitized) ? null : "Phone must be 10 digits";
       case "billing_pin":
@@ -455,10 +500,35 @@ const Orders = () => {
     }
   };
 
+  const handleProductChange = (index, field, value) => {
+    if (!Array.isArray(newOrder.products)) return;
+    const updatedProducts = [...newOrder.products];
+    updatedProducts[index][field] = value;
+    setNewOrder((prev) => ({ ...prev, products: updatedProducts }));
+  };
+
+  const addProductRow = () => {
+    setNewOrder((prev) => ({
+      ...prev,
+      products: Array.isArray(prev.products)
+        ? [...prev.products, { model: "", quantity: 1 }]
+        : [{ model: "", quantity: 1 }],
+    }));
+  };
+
+  const removeProductRow = (index) => {
+    setNewOrder((prev) => ({
+      ...prev,
+      products: Array.isArray(prev.products)
+        ? prev.products.filter((_, i) => i !== index)
+        : [],
+    }));
+  };
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     const newValue = type === "checkbox" ? checked : sanitizeInput(value);
-    
+
     setNewOrder((prev) => ({
       ...prev,
       [name]: newValue,
@@ -493,13 +563,27 @@ const Orders = () => {
   };
 
   const calculateTotal = () => {
-    const product = getSelectedProduct();
-    if (!product || !product.mrp) {
-      return 0;
+    if (Array.isArray(newOrder.products) && newOrder.products.length > 0) {
+      // Multi-product mode
+      return newOrder.products.reduce((total, item) => {
+        const product = products.find(
+          (p) =>
+            String(p.code || p._id || p.id || p.product_id) ===
+            String(item.model)
+        );
+        if (!product || !product.mrp) return total;
+        const quantity = Number(item.quantity) || 1;
+        const price = Number(product.mrp) || 0;
+        return total + price * quantity;
+      }, 0);
+    } else {
+      // Single product mode (fallback)
+      const product = getSelectedProduct();
+      if (!product || !product.mrp) return 0;
+      const quantity = Number(newOrder.quantity) || 1;
+      const price = Number(product.mrp) || 0;
+      return price * quantity;
     }
-    const quantity = Number(newOrder.quantity) || 1;
-    const price = Number(product.mrp) || 0;
-    return price * quantity;
   };
 
   const validateOrderForm = () => {
@@ -507,15 +591,31 @@ const Orders = () => {
 
     // Validate all fields
     Object.keys(newOrder).forEach((key) => {
-      if (key === 'sameAsBilling' || key === 'quantity') return;
+      if (
+        key === "sameAsBilling" ||
+        key === "quantity" ||
+        key === "model" ||
+        key === "products"
+      )
+        return;
       const error = validateField(key, newOrder[key]);
       if (error) errors[key] = error;
     });
 
-    // Validate plumber and model selection
+    // Validate plumber
     if (!newOrder.plumber_id) errors.plumber_id = "Please select a plumber";
-    if (!newOrder.model) errors.model = "Please select a model";
-    if (!newOrder.quantity || newOrder.quantity < 1) errors.quantity = "Quantity must be at least 1";
+
+    // Validate products
+    if (Array.isArray(newOrder.products) && newOrder.products.length > 0) {
+      const hasValidProduct = newOrder.products.some(
+        (p) => p.model && p.quantity > 0
+      );
+      if (!hasValidProduct) {
+        errors.products = "Please add at least one product with valid quantity";
+      }
+    } else if (!newOrder.model) {
+      errors.model = "Please select a model";
+    }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -532,15 +632,49 @@ const Orders = () => {
     setActionLoading((prev) => ({ ...prev, createOrder: true }));
 
     try {
-      const product = getSelectedProduct();
-      if (!product) {
-        showToast("Selected product not found", "error");
-        return;
+      // Build items array from products
+      const items = [];
+
+      if (Array.isArray(newOrder.products) && newOrder.products.length > 0) {
+        // Multi-product mode
+        for (const productItem of newOrder.products) {
+          const product = products.find(
+            (p) =>
+              String(p.code || p._id || p.id || p.product_id) ===
+              String(productItem.model)
+          );
+
+          if (!product) {
+            showToast(`Product ${productItem.model} not found`, "error");
+            return;
+          }
+
+          items.push({
+            product:
+              product.code || product._id || product.id || product.product_id,
+            price: product.mrp,
+            quantity: Number(productItem.quantity),
+          });
+        }
+      } else {
+        // Single product mode (fallback)
+        const product = getSelectedProduct();
+        if (!product) {
+          showToast("Selected product not found", "error");
+          return;
+        }
+
+        items.push({
+          product:
+            product.code || product._id || product.id || product.product_id,
+          price: product.mrp,
+          quantity: Number(newOrder.quantity),
+        });
       }
 
       const storedUser = sessionStorage.getItem("user");
       let userId = null;
-    
+
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
@@ -554,6 +688,12 @@ const Orders = () => {
         showToast("User information not found. Please login again.", "error");
         return;
       }
+
+      // Calculate total from all items
+      const totalAmount = items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
 
       const orderData = {
         plumber_id: newOrder.plumber_id,
@@ -573,15 +713,9 @@ const Orders = () => {
           state: newOrder.shipping_state.trim(),
           pin: newOrder.shipping_pin.trim(),
         },
-        items: [
-          {
-            product: product.code || product._id || product.id || product.product_id,
-            price: product.mrp,
-            quantity: Number(newOrder.quantity),
-          },
-        ],
-        total_amount: calculateTotal(), 
-        order_created_by: userId
+        items: items,
+        total_amount: totalAmount,
+        order_created_by: userId,
       };
 
       await apiCall("post", "/coordinator/coordinator-place-order", orderData);
@@ -603,9 +737,10 @@ const Orders = () => {
         sameAsBilling: false,
         model: "",
         quantity: 1,
+        products: [{ model: "", quantity: 1 }],
       });
       setValidationErrors({});
-      
+
       fetchData();
     } catch (error) {
       console.error("Error creating order:", error);
@@ -632,8 +767,11 @@ const Orders = () => {
       title: "Confirm Status Change",
       message: `Are you sure you want to change the status to "${newStatus}"?`,
       onConfirm: async () => {
-        setActionLoading((prev) => ({ ...prev, [`status-${order._id}`]: true }));
-        
+        setActionLoading((prev) => ({
+          ...prev,
+          [`status-${order._id}`]: true,
+        }));
+
         try {
           await apiCall("put", `/coordinator/orders/${order._id}/status`, {
             status: newStatus,
@@ -650,7 +788,10 @@ const Orders = () => {
           console.error("Failed to update status:", err);
           showToast("Failed to update status", "error");
         } finally {
-          setActionLoading((prev) => ({ ...prev, [`status-${order._id}`]: false }));
+          setActionLoading((prev) => ({
+            ...prev,
+            [`status-${order._id}`]: false,
+          }));
           setConfirmDialog({ isOpen: false });
         }
       },
@@ -677,12 +818,15 @@ const Orders = () => {
       return;
     }
 
-    setActionLoading((prev) => ({ ...prev, [`cancel-${orderToCancel._id}`]: true }));
+    setActionLoading((prev) => ({
+      ...prev,
+      [`cancel-${orderToCancel._id}`]: true,
+    }));
 
     try {
       const storedUser = sessionStorage.getItem("user");
       let userId = null;
-    
+
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
@@ -695,7 +839,7 @@ const Orders = () => {
       await apiCall("put", `/coordinator/orders/${orderToCancel._id}/status`, {
         status: "Cancelled",
         cancelled_reason: cancelReason.trim(),
-        cancelled_by: userId
+        cancelled_by: userId,
       });
 
       setOrders((prevOrders) =>
@@ -706,7 +850,7 @@ const Orders = () => {
                 status: "Cancelled",
                 cancelled_reason: cancelReason.trim(),
                 cancelled_by: userId,
-                cancelled_at: new Date().toISOString()
+                cancelled_at: new Date().toISOString(),
               }
             : o
         )
@@ -715,9 +859,15 @@ const Orders = () => {
       showToast("Order cancelled successfully", "success");
     } catch (err) {
       console.error("Failed to cancel order:", err);
-      showToast(err.response?.data?.message || "Failed to cancel order", "error");
+      showToast(
+        err.response?.data?.message || "Failed to cancel order",
+        "error"
+      );
     } finally {
-      setActionLoading((prev) => ({ ...prev, [`cancel-${orderToCancel._id}`]: false }));
+      setActionLoading((prev) => ({
+        ...prev,
+        [`cancel-${orderToCancel._id}`]: false,
+      }));
       setShowCancelConfirm(false);
       setCancelReason("");
       setOrderToCancel(null);
@@ -740,7 +890,7 @@ const Orders = () => {
       });
 
       showToast("AWB number saved successfully", "success");
-      
+
       setOrders((prevOrders) =>
         prevOrders.map((o) =>
           o._id === order._id ? { ...o, awb_changed: false } : o
@@ -760,8 +910,11 @@ const Orders = () => {
       title: "Mark Order as Fulfilled",
       message: "Are you sure you want to mark this order as fulfilled?",
       onConfirm: async () => {
-        setActionLoading((prev) => ({ ...prev, [`fulfilled-${order._id}`]: true }));
-        
+        setActionLoading((prev) => ({
+          ...prev,
+          [`fulfilled-${order._id}`]: true,
+        }));
+
         try {
           await apiCall("put", `/coordinator/orders/${order._id}/status`, {
             status: "Fulfilled",
@@ -779,7 +932,10 @@ const Orders = () => {
           console.error("Failed to mark order as fulfilled:", err);
           showToast("Failed to mark order as fulfilled", "error");
         } finally {
-          setActionLoading((prev) => ({ ...prev, [`fulfilled-${order._id}`]: false }));
+          setActionLoading((prev) => ({
+            ...prev,
+            [`fulfilled-${order._id}`]: false,
+          }));
           setConfirmDialog({ isOpen: false });
         }
       },
@@ -790,13 +946,13 @@ const Orders = () => {
   const handleInvoiceUpload = async (order, file) => {
     if (!file) return;
 
-    if (file.type !== 'application/pdf') {
-      showToast('Only PDF files are allowed', 'error');
+    if (file.type !== "application/pdf") {
+      showToast("Only PDF files are allowed", "error");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      showToast('File size exceeds 5MB limit', 'error');
+      showToast("File size exceeds 5MB limit", "error");
       return;
     }
 
@@ -804,23 +960,22 @@ const Orders = () => {
 
     try {
       const formData = new FormData();
-      formData.append('invoice', file);
-      formData.append('docType', 'invoice');
-      formData.append('fileType', 'pdf');
+      formData.append("invoice", file);
+      formData.append("docType", "invoice");
+      formData.append("fileType", "pdf");
 
       const response = await api.post(
         `/coordinator/order/upload-invoice/${order._id}`,
-        formData,
+        formData
       );
 
-      showToast('Invoice uploaded successfully', 'success');
-      
+      showToast("Invoice uploaded successfully", "success");
+
       if (selectedOrder && selectedOrder._id === order._id) {
         setSelectedOrder({
           ...selectedOrder,
-          invoiceKey: response.data.data.invoiceKey
+          invoiceKey: response.data.data.invoiceKey,
         });
-        
       }
 
       setOrders((prevOrders) =>
@@ -831,10 +986,16 @@ const Orders = () => {
         )
       );
     } catch (err) {
-      console.error('Failed to upload invoice:', err);
-      showToast(err.response?.data?.message || 'Failed to upload invoice', 'error');
+      console.error("Failed to upload invoice:", err);
+      showToast(
+        err.response?.data?.message || "Failed to upload invoice",
+        "error"
+      );
     } finally {
-      setActionLoading((prev) => ({ ...prev, [`invoice-${order._id}`]: false }));
+      setActionLoading((prev) => ({
+        ...prev,
+        [`invoice-${order._id}`]: false,
+      }));
     }
   };
 
@@ -842,15 +1003,22 @@ const Orders = () => {
     setActionLoading((prev) => ({ ...prev, [`download-${order._id}`]: true }));
 
     try {
-      const response = await apiCall("post", `/coordinator/order/get-invoice/${order._id}`, {
-        key: order.invoiceKey
-      });
-      window.open(response.url, '_blank');
+      const response = await apiCall(
+        "post",
+        `/coordinator/order/get-invoice/${order._id}`,
+        {
+          key: order.invoiceKey,
+        }
+      );
+      window.open(response.url, "_blank");
     } catch (err) {
-      console.error('Failed to download invoice:', err);
-      showToast('Failed to download invoice', 'error');
+      console.error("Failed to download invoice:", err);
+      showToast("Failed to download invoice", "error");
     } finally {
-      setActionLoading((prev) => ({ ...prev, [`download-${order._id}`]: false }));
+      setActionLoading((prev) => ({
+        ...prev,
+        [`download-${order._id}`]: false,
+      }));
     }
   };
 
@@ -918,25 +1086,37 @@ const Orders = () => {
         )}
 
         {/* Order Sections */}
-        {["Order-Placed", "Payment-Completed", "Dispatched", "Fulfilled", "Cancelled"].map((status) => {
-          const sectionOrders = filteredOrders.filter(order => order.status === status);
+        {[
+          "Order-Placed",
+          "Payment-Completed",
+          "Dispatched",
+          "Fulfilled",
+          "Cancelled",
+        ].map((status) => {
+          const sectionOrders = filteredOrders.filter(
+            (order) => order.status === status
+          );
           const sectionTitles = {
             "Order-Placed": "Order Placed",
             "Payment-Completed": "Payment Done",
-            "Dispatched": "Dispatched",
-            "Fulfilled": "Order Fulfilled",
-            "Cancelled": "Cancelled Orders"
+            Dispatched: "Dispatched",
+            Fulfilled: "Order Fulfilled",
+            Cancelled: "Cancelled Orders",
           };
           const sectionIcons = {
             "Order-Placed": <Package size={20} />,
             "Payment-Completed": <Package size={20} />,
-            "Dispatched": <Truck size={20} />,
-            "Fulfilled": <CircleCheckBig size={20} />,
-            "Cancelled": <X size={20} />
+            Dispatched: <Truck size={20} />,
+            Fulfilled: <CircleCheckBig size={20} />,
+            Cancelled: <X size={20} />,
           };
 
           return (
-            <div key={status} className="orders-section" style={{ marginTop: "20px" }}>
+            <div
+              key={status}
+              className="orders-section"
+              style={{ marginTop: "20px" }}
+            >
               <div className="section-header">
                 {sectionIcons[status]}
                 <h3>{sectionTitles[status]}</h3>
@@ -957,8 +1137,8 @@ const Orders = () => {
                       <th>Total</th>
                       {status === "Dispatched" && <th>AWB/Tracking ID</th>}
                       {status === "Dispatched" && <th>Fulfilment</th>}
-                      {(status === "Order-Placed" || status === "Payment-Completed") && <th>Status</th>}
-                      {/* CORRECTION: Added Reason column for Cancelled orders */}
+                      {(status === "Order-Placed" ||
+                        status === "Payment-Completed") && <th>Status</th>}
                       {status === "Fulfilled" && <th>Delivered On</th>}
                       {status === "Cancelled" && <th>Cancelled On</th>}
                       {status === "Cancelled" && <th>Reason</th>}
@@ -968,16 +1148,18 @@ const Orders = () => {
                     {sectionOrders.length > 0 ? (
                       sectionOrders.map((order) => (
                         <tr key={order._id || order.id}>
-                          <td 
-                            className="order-id" 
-                            title={order._id || order.id} 
+                          <td
+                            className="order-id"
+                            title={order._id || order.id}
                             onClick={() => setSelectedOrder(order)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: "pointer" }}
                             tabIndex={0}
                             role="button"
-                            aria-label={`View details for order ${order.id || order._id}`}
+                            aria-label={`View details for order ${
+                              order.id || order._id
+                            }`}
                             onKeyPress={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
+                              if (e.key === "Enter" || e.key === " ") {
                                 setSelectedOrder(order);
                               }
                             }}
@@ -987,21 +1169,39 @@ const Orders = () => {
                           <td className="order-date">
                             {formatDate(order.created_at || order.createdAt)}
                           </td>
-                          <td className="plumber-name">{getPlumberName(order)}</td>
-                          <td className="customer-name">{getCustomerName(order)}</td>
-                          <td className="address">{getBillingAddress(order)}</td>
-                          <td className="address">{getShippingAddress(order)}</td>
+                          <td className="plumber-name">
+                            {getPlumberName(order)}
+                          </td>
+                          <td className="customer-name">
+                            {getCustomerName(order)}
+                          </td>
+                          <td className="address">
+                            {getBillingAddress(order)}
+                          </td>
+                          <td className="address">
+                            {getShippingAddress(order)}
+                          </td>
                           <td className="product-name">
-                            {getProductNames(order.items)} x {order.items?.length || 0}
+                            {getProductNames(order.items)} x{" "}
+                            {order.items?.length || 0}
                           </td>
                           <td className="amount">
-                            ₹{calculateOrderTotal(order.items).toLocaleString("en-IN")}
+                            ₹
+                            {calculateOrderTotal(order.items).toLocaleString(
+                              "en-IN"
+                            )}
                           </td>
 
                           {status === "Dispatched" && (
                             <>
                               <td>
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                  }}
+                                >
                                   <input
                                     type="text"
                                     value={order.awb_number || ""}
@@ -1013,7 +1213,11 @@ const Orders = () => {
                                       setOrders((prevOrders) =>
                                         prevOrders.map((o) =>
                                           o._id === order._id
-                                            ? { ...o, awb_number: value, awb_changed: true }
+                                            ? {
+                                                ...o,
+                                                awb_number: value,
+                                                awb_changed: true,
+                                              }
                                             : o
                                         )
                                       );
@@ -1023,10 +1227,14 @@ const Orders = () => {
                                     <button
                                       className="save-awb-btn"
                                       onClick={() => handleSaveAWB(order)}
-                                      disabled={actionLoading[`awb-${order._id}`]}
+                                      disabled={
+                                        actionLoading[`awb-${order._id}`]
+                                      }
                                       aria-label="Save AWB number"
                                     >
-                                      {actionLoading[`awb-${order._id}`] ? "Saving..." : "Save"}
+                                      {actionLoading[`awb-${order._id}`]
+                                        ? "Saving..."
+                                        : "Save"}
                                     </button>
                                   )}
                                 </div>
@@ -1035,31 +1243,43 @@ const Orders = () => {
                                 <button
                                   onClick={() => handleMarkFulfilled(order)}
                                   className="mark-fulfilled-btn"
-                                  disabled={order.status === "Fulfilled" || actionLoading[`fulfilled-${order._id}`]}
+                                  disabled={
+                                    order.status === "Fulfilled" ||
+                                    actionLoading[`fulfilled-${order._id}`]
+                                  }
                                   aria-label="Mark order as fulfilled"
                                 >
-                                  {actionLoading[`fulfilled-${order._id}`] 
-                                    ? "Processing..." 
-                                    : order.status === "Fulfilled" 
-                                    ? "Fulfilled" 
+                                  {actionLoading[`fulfilled-${order._id}`]
+                                    ? "Processing..."
+                                    : order.status === "Fulfilled"
+                                    ? "Fulfilled"
                                     : "Mark Fulfilled"}
                                 </button>
                               </td>
                             </>
                           )}
 
-                          {(status === "Order-Placed" || status === "Payment-Completed") && (
+                          {(status === "Order-Placed" ||
+                            status === "Payment-Completed") && (
                             <td>
                               <select
                                 value={order.status || "Order-Placed"}
                                 className={`status-dropdown ${getStatusBadgeClass(
-                              order.status
-                            )}`}
-                                onChange={(e) => handleStatusChange(order, e.target.value)}
+                                  order.status
+                                )}`}
+                                onChange={(e) =>
+                                  handleStatusChange(order, e.target.value)
+                                }
                                 disabled={actionLoading[`status-${order._id}`]}
                                 aria-label="Change order status"
                               >
-                                {["Order-Placed", "Payment-Completed", "Dispatched", "Fulfilled", "Cancelled"].map((s) => (
+                                {[
+                                  "Order-Placed",
+                                  "Payment-Completed",
+                                  "Dispatched",
+                                  "Fulfilled",
+                                  "Cancelled",
+                                ].map((s) => (
                                   <option key={s} value={s}>
                                     {s}
                                   </option>
@@ -1070,15 +1290,18 @@ const Orders = () => {
 
                           {status === "Fulfilled" && (
                             <td>
-                              {formatDate(order.fulfilled_at || order.fulfilledAt)}
+                              {formatDate(
+                                order.fulfilled_at || order.fulfilledAt
+                              )}
                             </td>
                           )}
 
-                          {/* CORRECTION: Added cancelled_at and cancelled_reason columns */}
                           {status === "Cancelled" && (
                             <>
                               <td>
-                                {formatDate(order.cancelled_at || order.cancelledAt)}
+                                {formatDate(
+                                  order.cancelled_at || order.cancelledAt
+                                )}
                               </td>
                               <td>{order.cancelled_reason || "N/A"}</td>
                             </>
@@ -1087,7 +1310,10 @@ const Orders = () => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="11" style={{ textAlign: "center", padding: "2rem" }}>
+                        <td
+                          colSpan="11"
+                          style={{ textAlign: "center", padding: "2rem" }}
+                        >
                           No orders found in this section.
                         </td>
                       </tr>
@@ -1099,11 +1325,12 @@ const Orders = () => {
           );
         })}
 
-        {/* Pagination */}
         {pagination.pages > 1 && (
           <div className="pagination" role="navigation" aria-label="Pagination">
             <button
-              onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
+              onClick={() =>
+                setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
+              }
               disabled={pagination.page === 1}
               aria-label="Previous page"
             >
@@ -1113,7 +1340,9 @@ const Orders = () => {
               Page {pagination.page} of {pagination.pages}
             </span>
             <button
-              onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
+              onClick={() =>
+                setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
+              }
               disabled={pagination.page === pagination.pages}
               aria-label="Next page"
             >
@@ -1131,7 +1360,12 @@ const Orders = () => {
             setValidationErrors({});
           }}
         >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="create-order-title">
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="create-order-title"
+          >
             <div className="modal-header">
               <h3 id="create-order-title">Create Order</h3>
               <button
@@ -1173,7 +1407,9 @@ const Orders = () => {
                       ))}
                     </select>
                     {validationErrors.plumber_id && (
-                      <span className="error-text" role="alert">{validationErrors.plumber_id}</span>
+                      <span className="error-text" role="alert">
+                        {validationErrors.plumber_id}
+                      </span>
                     )}
                   </div>
 
@@ -1191,7 +1427,9 @@ const Orders = () => {
                       aria-invalid={!!validationErrors.client_name}
                     />
                     {validationErrors.client_name && (
-                      <span className="error-text" role="alert">{validationErrors.client_name}</span>
+                      <span className="error-text" role="alert">
+                        {validationErrors.client_name}
+                      </span>
                     )}
                   </div>
 
@@ -1209,7 +1447,9 @@ const Orders = () => {
                       aria-invalid={!!validationErrors.client_phone}
                     />
                     {validationErrors.client_phone && (
-                      <span className="error-text" role="alert">{validationErrors.client_phone}</span>
+                      <span className="error-text" role="alert">
+                        {validationErrors.client_phone}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1233,7 +1473,9 @@ const Orders = () => {
                         aria-invalid={!!validationErrors.billing_address}
                       />
                       {validationErrors.billing_address && (
-                        <span className="error-text" role="alert">{validationErrors.billing_address}</span>
+                        <span className="error-text" role="alert">
+                          {validationErrors.billing_address}
+                        </span>
                       )}
                     </div>
                     <div className="form-row">
@@ -1251,7 +1493,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.billing_city}
                         />
                         {validationErrors.billing_city && (
-                          <span className="error-text" role="alert">{validationErrors.billing_city}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.billing_city}
+                          </span>
                         )}
                       </div>
                       <div className="city-state-pin">
@@ -1268,7 +1512,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.billing_state}
                         />
                         {validationErrors.billing_state && (
-                          <span className="error-text" role="alert">{validationErrors.billing_state}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.billing_state}
+                          </span>
                         )}
                       </div>
                       <div className="city-state-pin">
@@ -1285,7 +1531,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.billing_pin}
                         />
                         {validationErrors.billing_pin && (
-                          <span className="error-text" role="alert">{validationErrors.billing_pin}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.billing_pin}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1305,7 +1553,9 @@ const Orders = () => {
 
                   <div className="address-half">
                     <div className="form-group">
-                      <label htmlFor="shipping_address">Shipping Address *</label>
+                      <label htmlFor="shipping_address">
+                        Shipping Address *
+                      </label>
                       <input
                         id="shipping_address"
                         type="text"
@@ -1319,7 +1569,9 @@ const Orders = () => {
                         aria-invalid={!!validationErrors.shipping_address}
                       />
                       {validationErrors.shipping_address && (
-                        <span className="error-text" role="alert">{validationErrors.shipping_address}</span>
+                        <span className="error-text" role="alert">
+                          {validationErrors.shipping_address}
+                        </span>
                       )}
                     </div>
                     <div className="form-row">
@@ -1338,7 +1590,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.shipping_city}
                         />
                         {validationErrors.shipping_city && (
-                          <span className="error-text" role="alert">{validationErrors.shipping_city}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.shipping_city}
+                          </span>
                         )}
                       </div>
                       <div className="city-state-pin">
@@ -1356,7 +1610,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.shipping_state}
                         />
                         {validationErrors.shipping_state && (
-                          <span className="error-text" role="alert">{validationErrors.shipping_state}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.shipping_state}
+                          </span>
                         )}
                       </div>
                       <div className="city-state-pin">
@@ -1374,7 +1630,9 @@ const Orders = () => {
                           aria-invalid={!!validationErrors.shipping_pin}
                         />
                         {validationErrors.shipping_pin && (
-                          <span className="error-text" role="alert">{validationErrors.shipping_pin}</span>
+                          <span className="error-text" role="alert">
+                            {validationErrors.shipping_pin}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1383,51 +1641,75 @@ const Orders = () => {
               </div>
 
               <div className="form-section">
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="model">Model *</label>
-                    <select
-                      id="model"
-                      name="model"
-                      value={newOrder.model}
-                      onChange={handleInputChange}
-                      required
-                      aria-required="true"
-                      aria-invalid={!!validationErrors.model}
-                    >
-                      <option value="">Select Model</option>
-                      {products.map((product) => (
-                        <option
-                          key={product.code || product._id || product.id || product.product_id}
-                          value={product.code || product._id || product.id || product.product_id}
+                <h4>Products</h4>
+                {Array.isArray(newOrder.products) &&
+                newOrder.products.length > 0 ? (
+                  newOrder.products.map((item, index) => (
+                    <div key={index} className="form-row same-line">
+                      <div className="form-group">
+                        <label>Model *</label>
+                        <select
+                          value={item.model}
+                          onChange={(e) =>
+                            handleProductChange(index, "model", e.target.value)
+                          }
+                          required
                         >
-                          {product.name} — ₹{product.mrp}
-                        </option>
-                      ))}
-                    </select>
-                    {validationErrors.model && (
-                      <span className="error-text" role="alert">{validationErrors.model}</span>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="quantity">Quantity *</label>
-                    <input
-                      id="quantity"
-                      type="number"
-                      name="quantity"
-                      value={newOrder.quantity}
-                      onChange={handleInputChange}
-                      min="1"
-                      required
-                      aria-required="true"
-                      aria-invalid={!!validationErrors.quantity}
-                    />
-                    {validationErrors.quantity && (
-                      <span className="error-text" role="alert">{validationErrors.quantity}</span>
-                    )}
-                  </div>
-                </div>
+                          <option value="">Select Model</option>
+                          {products.map((product, idx) => (
+                            <option
+                              key={product._id || product.code || idx}
+                              value={product._id || product.code}
+                            >
+                              {product.name} — ₹{product.mrp}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Quantity *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleProductChange(
+                              index,
+                              "quantity",
+                              e.target.value
+                            )
+                          }
+                          required
+                        />
+                      </div>
+
+                      {newOrder.products.length > 1 && (
+                        <button
+                          type="button"
+                          className="product-remove-btn"
+                          onClick={() => removeProductRow(index)}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: "#666", fontSize: "14px" }}>
+                    No product added yet. Click "+ Add Product" below to start.
+                  </p>
+                )}
               </div>
+
+              <button
+                type="button"
+                className="add-product-btn"
+                onClick={addProductRow}
+                style={{ marginTop: "10px" }}
+              >
+                + Add Product
+              </button>
 
               <div className="form-section">
                 <div className="order-total">
@@ -1450,8 +1732,8 @@ const Orders = () => {
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-submit"
                   disabled={actionLoading.createOrder}
                 >
@@ -1465,10 +1747,7 @@ const Orders = () => {
 
       {/* Order Details Modal */}
       {selectedOrder && (
-        <div
-          className="modal-overlay"
-          onClick={() => setSelectedOrder(null)}
-        >
+        <div className="modal-overlay" onClick={() => setSelectedOrder(null)}>
           <div
             className="order-details-modal"
             onClick={(e) => e.stopPropagation()}
@@ -1490,9 +1769,15 @@ const Orders = () => {
               <div className="order-top-section">
                 <div className="order-id-badge">
                   <span className="label">Order ID</span>
-                  <span className="value">#{selectedOrder.id || selectedOrder._id}</span>
+                  <span className="value">
+                    #{selectedOrder.id || selectedOrder._id}
+                  </span>
                 </div>
-                <div className={`status-badge-large status-${selectedOrder.status?.toLowerCase().replace('-', '_')}`}>
+                <div
+                  className={`status-badge-large status-${selectedOrder.status
+                    ?.toLowerCase()
+                    .replace("-", "_")}`}
+                >
                   <span className="status-dot"></span>
                   {selectedOrder.status}
                 </div>
@@ -1503,16 +1788,24 @@ const Orders = () => {
                   <div className="icon-circle customer-icon">👤</div>
                   <div className="info-content">
                     <span className="info-label">Customer</span>
-                    <span className="info-name">{getCustomerName(selectedOrder)}</span>
-                    <span className="info-detail">{selectedOrder.client?.phone || 'N/A'}</span>
+                    <span className="info-name">
+                      {getCustomerName(selectedOrder)}
+                    </span>
+                    <span className="info-detail">
+                      {selectedOrder.client?.phone || "N/A"}
+                    </span>
                   </div>
                 </div>
                 <div className="info-card plumber-card">
                   <div className="icon-circle plumber-icon">🔧</div>
                   <div className="info-content-01">
                     <span className="info-label">Plumber</span>
-                    <span className="info-name">{getPlumberName(selectedOrder)}</span>
-                    <span className="info-detail">{selectedOrder.plumber?.phone || 'N/A'}</span>
+                    <span className="info-name">
+                      {getPlumberName(selectedOrder)}
+                    </span>
+                    <span className="info-detail">
+                      {selectedOrder.plumber?.phone || "N/A"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1538,22 +1831,33 @@ const Orders = () => {
                   <div key={index} className="order-item-card">
                     <div className="item-icon">📦</div>
                     <div className="item-details">
-                      <span className="item-name">{getProductNameById(item.product)}</span>
-                      <span className="item-quantity">Quantity: {item.quantity} × ₹{item.price?.toLocaleString('en-IN')}</span>
+                      <span className="item-name">
+                        {getProductNameById(item.product)}
+                      </span>
+                      <span className="item-quantity">
+                        Quantity: {item.quantity} × ₹
+                        {item.price?.toLocaleString("en-IN")}
+                      </span>
                     </div>
-                    <div className="item-price">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
+                    <div className="item-price">
+                      ₹{(item.quantity * item.price).toLocaleString("en-IN")}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {(selectedOrder.status === 'Dispatched' || selectedOrder.status === 'Fulfilled') && selectedOrder.awb_number && (
-                <div className="tracking-card">
-                  <div className="tracking-label">📍 Tracking Number</div>
-                  <div className="tracking-number">{selectedOrder.awb_number}</div>
-                </div>
-              )}
+              {(selectedOrder.status === "Dispatched" ||
+                selectedOrder.status === "Fulfilled") &&
+                selectedOrder.awb_number && (
+                  <div className="tracking-card">
+                    <div className="tracking-label">📍 Tracking Number</div>
+                    <div className="tracking-number">
+                      {selectedOrder.awb_number}
+                    </div>
+                  </div>
+                )}
 
-              {selectedOrder.status === 'Dispatched' && (
+              {selectedOrder.status === "Dispatched" && (
                 <div className="invoice-upload-section">
                   <h4 className="section-title">Invoice</h4>
                   {selectedOrder.invoiceKey ? (
@@ -1565,11 +1869,15 @@ const Orders = () => {
                       <button
                         className="btn-download-invoice"
                         onClick={() => handleInvoiceDownload(selectedOrder)}
-                        disabled={actionLoading[`download-${selectedOrder._id}`]}
+                        disabled={
+                          actionLoading[`download-${selectedOrder._id}`]
+                        }
                         aria-label="Download invoice"
                       >
                         <Download size={16} />
-                        {actionLoading[`download-${selectedOrder._id}`] ? "Downloading..." : "Download Invoice"}
+                        {actionLoading[`download-${selectedOrder._id}`]
+                          ? "Downloading..."
+                          : "Download Invoice"}
                       </button>
                     </div>
                   ) : (
@@ -1578,11 +1886,11 @@ const Orders = () => {
                         type="file"
                         accept="application/pdf"
                         id={`modal-invoice-${selectedOrder._id}`}
-                        style={{ display: 'none' }}
+                        style={{ display: "none" }}
                         onChange={(e) => {
                           const file = e.target.files[0];
                           if (file) handleInvoiceUpload(selectedOrder, file);
-                          e.target.value = '';
+                          e.target.value = "";
                         }}
                         aria-label="Upload invoice PDF"
                       />
@@ -1590,9 +1898,9 @@ const Orders = () => {
                         htmlFor={`modal-invoice-${selectedOrder._id}`}
                         className="btn-upload-invoice"
                       >
-                        <span>📤</span> 
-                        {actionLoading[`invoice-${selectedOrder._id}`] 
-                          ? "Uploading..." 
+                        <span>📤</span>
+                        {actionLoading[`invoice-${selectedOrder._id}`]
+                          ? "Uploading..."
                           : "Upload Invoice (PDF)"}
                       </label>
                     </div>
@@ -1603,41 +1911,51 @@ const Orders = () => {
               <div className="dates-row">
                 <div className="date-card order-date-card">
                   <span className="date-label">Order Date</span>
-                  <span className="date-value">{formatDate(selectedOrder.createdAt)}</span>
+                  <span className="date-value">
+                    {formatDate(selectedOrder.createdAt)}
+                  </span>
                 </div>
-                {selectedOrder.status === "Fulfilled" && selectedOrder.fulfilled_at && (
-  <div className="date-card fulfilled-date-card">
-    <span className="date-label">Fulfilled On</span>
-    <span className="date-value">{formatDate(selectedOrder.fulfilled_at)}</span>
-  </div>
-)}
+                {selectedOrder.status === "Fulfilled" &&
+                  selectedOrder.fulfilled_at && (
+                    <div className="date-card fulfilled-date-card">
+                      <span className="date-label">Fulfilled On</span>
+                      <span className="date-value">
+                        {formatDate(selectedOrder.fulfilled_at)}
+                      </span>
+                    </div>
+                  )}
 
-{selectedOrder.status === "Cancelled" && (
-  <div className="cancelled-info">
-    {selectedOrder.cancelledAt && (
-      <div className="date-card cancelled-date-card">
-        <span className="date-label">Cancelled On</span>
-        <span className="date-value">{formatDate(selectedOrder.cancelledAt)}</span>
-      </div>
-    )}
-  </div>
-)}
-
-
+                {selectedOrder.status === "Cancelled" && (
+                  <div className="cancelled-info">
+                    {selectedOrder.cancelledAt && (
+                      <div className="date-card cancelled-date-card">
+                        <span className="date-label">Cancelled On</span>
+                        <span className="date-value">
+                          {formatDate(selectedOrder.cancelledAt)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              
-{selectedOrder.cancelled_reason && (
-  <div className="cancelled-reason-card">
-    <span className="reason-label">Reason</span>
-    <span className="reason-text">{selectedOrder.cancelled_reason}</span>
-  </div>
-)}
-
+              {selectedOrder.cancelled_reason && (
+                <div className="cancelled-reason-card">
+                  <span className="reason-label">Reason</span>
+                  <span className="reason-text">
+                    {selectedOrder.cancelled_reason}
+                  </span>
+                </div>
+              )}
 
               <div className="order-total-section">
                 <span className="total-label">Total Amount</span>
-                <span className="total-amount">₹{calculateOrderTotal(selectedOrder.items).toLocaleString('en-IN')}</span>
+                <span className="total-amount">
+                  ₹
+                  {calculateOrderTotal(selectedOrder.items).toLocaleString(
+                    "en-IN"
+                  )}
+                </span>
               </div>
             </div>
           </div>
@@ -1645,135 +1963,135 @@ const Orders = () => {
       )}
 
       {showCancelModal && (
-              <div className="modal-overlay">
-                <div className="modal-content" style={{ maxWidth: "500px" }}>
-                  <div className="modal-header">
-                    <h3>Cancel Order</h3>
-                    <button
-                      className="close-btn"
-                      onClick={() => {
-                        setShowCancelModal(false);
-                        setCancelReason("");
-                        setOrderToCancel(null);
-                      }}
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="modal-body">
-                    <p style={{ marginBottom: "15px", color: "#666" }}>
-                      Please provide a reason for cancelling this order:
-                    </p>
-                    <textarea
-                      value={cancelReason}
-                      onChange={(e) => setCancelReason(e.target.value)}
-                      placeholder="Enter cancellation reason..."
-                      rows="4"
-                      style={{
-                        width: "100%",
-                        padding: "10px",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                        fontSize: "14px",
-                        resize: "vertical",
-                      }}
-                    />
-                  </div>
-                  <div
-                    className="modal-footer"
-                    style={{
-                      display: "flex",
-                      gap: "10px",
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        setShowCancelModal(false);
-                        setCancelReason("");
-                        setOrderToCancel(null);
-                      }}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#f0f0f0",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={handleCancelReasonSubmit}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Continue
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-      
-            {showCancelConfirm && (
-              <div className="modal-overlay">
-                <div className="modal-content" style={{ maxWidth: "400px" }}>
-                  <div className="modal-header">
-                    <h3>Confirm Cancellation</h3>
-                  </div>
-                  <div className="modal-body">
-                    <p style={{ marginBottom: "10px" }}>
-                      Are you sure you want to cancel this order?
-                    </p>
-                    <p style={{ fontSize: "14px", color: "#666" }}>
-                      <strong>Reason:</strong> {cancelReason}
-                    </p>
-                  </div>
-                  <div
-                    className="modal-footer"
-                    style={{
-                      display: "flex",
-                      gap: "10px",
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <button
-                      onClick={() => handleCancelConfirm(false)}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#f0f0f0",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      No
-                    </button>
-                    <button
-                      onClick={() => handleCancelConfirm(true)}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Yes, Cancel Order
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "500px" }}>
+            <div className="modal-header">
+              <h3>Cancel Order</h3>
+              <button
+                className="close-btn"
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "15px", color: "#666" }}>
+                Please provide a reason for cancelling this order:
+              </p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Enter cancellation reason..."
+                rows="4"
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  resize: "vertical",
+                }}
+              />
+            </div>
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f0f0f0",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCancelReasonSubmit}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+            </div>
           </div>
-        );
-      };
-      
-      export default Orders;
+        </div>
+      )}
+
+      {showCancelConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "400px" }}>
+            <div className="modal-header">
+              <h3>Confirm Cancellation</h3>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "10px" }}>
+                Are you sure you want to cancel this order?
+              </p>
+              <p style={{ fontSize: "14px", color: "#666" }}>
+                <strong>Reason:</strong> {cancelReason}
+              </p>
+            </div>
+            <div
+              className="modal-footer"
+              style={{
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => handleCancelConfirm(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f0f0f0",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                No
+              </button>
+              <button
+                onClick={() => handleCancelConfirm(true)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                Yes, Cancel Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Orders;

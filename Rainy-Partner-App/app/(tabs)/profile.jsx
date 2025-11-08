@@ -99,26 +99,39 @@ export default function ProfileScreen() {
       .catch((err) => console.error("An error occurred", err));
   };
 
-  useEffect(() => {
-    if (!profile?.profile) return;
+useEffect(() => {
+  if (!profile?.profile) return;
 
-    const getProfileImage = async () => {
-      try {
-        const response = await axios.post(
-          `${BACKEND_URL}/get-image`,
-          { key: profile.profile },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setImageUrl(response.data.url);
-      } catch (error) {
-        console.error("Error fetching profile image:", error);
-      } finally {
-        setLoading(false);
+const getProfileImage = async () => {
+  try {
+    console.log('📸 Fetching profile image...');
+    console.log('Backend URL:', BACKEND_URL);  // ADD THIS
+    console.log('Full URL:', `${BACKEND_URL}/get-image`);  // ADD THIS
+    console.log('Profile key:', profile.profile);
+    
+    const response = await axios.post(
+      `${BACKEND_URL}/get-image`,
+      { key: profile.profile },
+      { 
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
       }
-    };
+    );
+    
+    console.log("✅ Response status:", response.status);  // ADD THIS
+    console.log("✅ Fetched profile image URL:", response.data.url);
+    setImageUrl(response.data.url);
+  } catch (error) {
+    console.error("❌ Full error:", error);  // CHANGE THIS
+    console.error("❌ Error response:", error.response?.data);  // ADD THIS
+    setImageUrl(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    getProfileImage();
-  }, [profile]);
+  getProfileImage();
+}, [profile?.profile, token]);
 
   useEffect(() => {
     if (profile) {
@@ -247,7 +260,7 @@ export default function ProfileScreen() {
       });
 
       Alert.alert("Success", "Profile updated successfully.");
-      await refetch(); // ✅ Automatically refresh after save
+      await refetch();
       setIsEditing(false);
       setIsModified(false);
     } catch (error) {

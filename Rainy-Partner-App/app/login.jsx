@@ -19,7 +19,6 @@ import { useAuth } from "../src/Context/AuthContext";
 import { router } from "expo-router";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// CORRECTION: Added SecureStore import for secure token storage
 import * as SecureStore from "expo-secure-store";
 
 export default function LoginScreen({ navigation }) {
@@ -35,26 +34,60 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
+    // Validate phone number (10 digits)
+    if (identifier.length !== 10 || !/^\d{10}$/.test(identifier)) {
+      Alert.alert("Error", "Please enter a valid 10-digit phone number.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await requestOtp(identifier);
-
-      if (response?.otp || response?.data?.otp) {
+      
+      console.log("OTP Response:", JSON.stringify(response, null, 2)); // Debug log
+      
+      // Check multiple possible success indicators
+      const responseData = response?.data || response;
+      
+      // Check if request was successful
+      const isSuccess = 
+        response?.status === 200 ||
+        response?.status === 201 ||
+        responseData?.success === true ||
+        responseData?.otp ||
+        responseData?.message?.toLowerCase().includes('sent') ||
+        responseData?.message?.toLowerCase().includes('success');
+      
+      if (isSuccess) {
         setOtpSent(true);
-        const otp = response?.data?.otp || response?.otp || "N/A";
-        Alert.alert("Success", `OTP sent successfully.`);
+        const otpValue = responseData?.otp || response?.otp;
+        
+        // In development, show OTP (remove in production)
+        if (__DEV__ && otpValue) {
+          Alert.alert(
+            "OTP Sent Successfully", 
+          );
+        } else {
+          Alert.alert("Success", "OTP sent successfully! Please check your SMS.");
+        }
       } else {
-        Alert.alert("Error", "Failed to send OTP");
+        // If response doesn't match success criteria
+        throw new Error(responseData?.message || "Failed to send OTP");
       }
     } catch (error) {
-      let message = "Failed to send OTP";
-      if (error.response?.data) {
-        message =
-          typeof error.response === "string"
-            ? error.response.data
-            : error.response.data.message ||
-              JSON.stringify(error.response.data);
-      } else if (error.message) {
+      console.error("OTP Send Error:", error); // Debug log
+      console.error("Error Response:", error.response); // Debug log
+      
+      let message = "Failed to send OTP. Please try again.";
+      
+      // Extract error message from various error structures
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        message = error.response.data.error;
+      } else if (typeof error.response?.data === "string") {
+        message = error.response.data;
+      } else if (error.message && error.message !== "Network Error") {
         message = error.message;
       }
 
@@ -70,36 +103,52 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
+    if (otp.length !== 6) {
+      Alert.alert("Error", "Please enter a valid 6-digit OTP");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const success = await loginWithOTP(identifier, otp);
+      
       if (success) {
         const userDataStr = await AsyncStorage.getItem("user_data");
         const userData = userDataStr ? JSON.parse(userDataStr) : null;
 
-        // CORRECTION: Get token from AsyncStorage and store in SecureStore
+        // Store token securely
         const token = await AsyncStorage.getItem("access_token");
         if (token) {
           await SecureStore.setItemAsync("access_token", token);
         }
 
+        // Navigation logic
         if (userData?.needs_onboarding) {
-          // ✅ Check if language is already selected
           const savedLanguage = await AsyncStorage.getItem("app_language");
 
           if (!savedLanguage) {
-            // No language chosen yet → go to language selection first
             router.replace("/languageSelectionPage");
           } else {
-            // Language already chosen → go straight to onboarding
             router.replace("/onboarding");
           }
         } else {
           router.replace("/(tabs)/home");
         }
+      } else {
+        Alert.alert("Error", "Invalid OTP. Please try again.");
       }
     } catch (error) {
-      Alert.alert("Error", "Invalid OTP. Please try again.");
+      console.error("OTP Verify Error:", error);
+      
+      let message = "Invalid OTP. Please try again.";
+      
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message) {
+        message = error.message;
+      }
+      
+      Alert.alert("Error", message);
     } finally {
       setIsLoading(false);
     }
@@ -323,7 +372,10 @@ export default function LoginScreen({ navigation }) {
                         alignItems: "center",
                         marginTop: 20,
                       }}
-                      onPress={() => setOtpSent(false)}
+                      onPress={() => {
+                        setOtpSent(false);
+                        setOtp("");
+                      }}
                     >
                       <Text
                         style={{

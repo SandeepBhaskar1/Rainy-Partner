@@ -258,7 +258,7 @@ router.post(
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
-        maxAge: 1 * 60 * 1000,
+        maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refresh_token", refreshToken, {
@@ -396,7 +396,7 @@ router.post(
         return res.status(401).json({ detail: "Refresh token has been revoked" });
       }
 
-      const newAccessToken = generateToken(user);
+      const newAccessToken = generateAdminToken(user);
       const newRefreshToken = generateAdminRefreshToken(user);
 
       const cookieOptions = {

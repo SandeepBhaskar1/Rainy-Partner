@@ -407,7 +407,7 @@ const Installations = () => {
 
     try {
       const response = await api.put(
-        `/post-leads/${installationId}/status-completed`,
+        `/coordinator/${installationId}/status-completed`,
         {
           status: "completed",
         },

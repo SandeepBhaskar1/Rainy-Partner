@@ -1,41 +1,58 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext"; // ADDED
 import "./Login.css";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false); // ADDED
   const navigate = useNavigate();
+  const { setUser } = useAuth(); // ADDED
 
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setIsLoading(true); // ADDED
 
     try {
       const res = await axios.post(`${BACKEND_URL}/auth/admin-login`, {
         email,
         password,
-      }, {withCredentials: true});
+      }, {
+        withCredentials: true // CRITICAL: Allows backend to set httpOnly cookies
+      });
 
-          console.log("Full response:", res); // 🔍 Add this
-    console.log("Response data:", res.data); // 🔍 Add this
-    console.log("Success value:", res.data.success);
+      console.log("Login response:", res.data);
 
       if (res.data.success) {
-        sessionStorage.setItem("user", JSON.stringify(res.data.admin));
+        const userData = res.data.admin;
+        
+        // CHANGED: No need to store token - it's in httpOnly cookie
+        // Just store user data for quick access
+        sessionStorage.setItem("user", JSON.stringify(userData));
+        
+        // ADDED: Update context
+        setUser(userData);
+        
+        // Navigate to dashboard
         navigate("/");
       } else {
         setError("Invalid credentials");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Login error:", err);
       setError(
-        err.response?.data?.message || "Invalid Credentials."
+        err.response?.data?.detail || 
+        err.response?.data?.message || 
+        "Invalid Credentials."
       );
+    } finally {
+      setIsLoading(false); // ADDED
     }
   };
 
@@ -52,12 +69,8 @@ const Login = () => {
 
       <div className="login-main-container">
         <div className="login-grid">
-          
-
           <div className="login-form-wrapper">
             <div className="login-blur-container">
-            
-
               <div className="form-header">
                 <h2 className="form-title">Admin Login</h2>
                 <p className="form-subtitle">Enter your credentials to access the admin dashboard</p>
@@ -79,6 +92,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={isLoading} // ADDED
                   />
                 </div>
 
@@ -91,6 +105,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={isLoading} // ADDED
                   />
                 </div>
 
@@ -98,18 +113,20 @@ const Login = () => {
                   <a href="#" onClick={handleForgotPassword}>Forgot password?</a>
                 </div>
 
-                <button type="submit" className="login-button">
-                  Sign In
+                <button 
+                  type="submit" 
+                  className="login-button"
+                  disabled={isLoading} // ADDED
+                >
+                  {isLoading ? "Signing In..." : "Sign In"} {/* ADDED */}
                 </button>
               </form>
 
               <div className="divider">
                 <span>Admin Access Only</span>
               </div>
-
             </div>
           </div>
-
         </div>
       </div>
     </div>

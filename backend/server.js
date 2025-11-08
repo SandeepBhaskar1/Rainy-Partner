@@ -54,6 +54,7 @@ const allowedOrigins = new Set([
       "http://localhost:5173",
       'http://192.168.1.41:5173',
       "http://172.20.10.2:5173",
+      'http://192.168.68.105:5173',
       "exp://10.34.196.196:8081",
 ]);
 
@@ -193,7 +194,7 @@ process.on("SIGINT", async () => {
 
 const PORT = process.env.PORT || 8001;
 const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://192.168.1.41:${PORT}`);
+  console.log(`Server running on http://192.168.68.105:${PORT}`);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
