@@ -194,7 +194,7 @@ process.on("SIGINT", async () => {
 
 const PORT = process.env.PORT || 8001;
 const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://192.168.68.105:${PORT}`);
+  console.log(`Server running on http://192.168.68.103:${PORT}`); 
 });
 
 process.on("unhandledRejection", (reason, promise) => {

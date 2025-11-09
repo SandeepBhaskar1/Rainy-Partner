@@ -86,11 +86,9 @@ router.get('/stats', async (req, res) => {
     const pending = plumbers.filter(p => p.agreement_status === true && p.kyc_status === 'pending' ).length;
     const rejected = plumbers.filter(p => p.kyc_status === 'rejected').length;
 
-    // Fetch orders and leads counts
     const ordersCount = await Order.countDocuments();
     const leadsCount = await Lead.countDocuments();
 
-    // Count open installations and awaiting dispatch directly
     const openInstallations = await Lead.countDocuments({ status: /pending/i });
     const awaitingDispatch = await Order.countDocuments({ status: /processing/i });
 
@@ -99,7 +97,6 @@ router.get('/stats', async (req, res) => {
       .sort({ created_at: -1 })
       .lean();
 
-    // Debug: Let's see what your query range actually is
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
 
@@ -161,8 +158,6 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-
-// Agreement Accepting
 router.put(
   '/agreement',
   verifyPlumberToken,
@@ -187,7 +182,6 @@ router.put(
   })
 );
 
-// CORRECTED: Get assigned jobs (excluding completed ones)
 router.get(
   '/assigned-jobs',
   verifyPlumberToken,
@@ -198,11 +192,10 @@ router.get(
     try {
       const db = mongoose.connection.db;
       
-      // Find jobs that are NOT completed
       const leads = await db.collection('leads').find({
         assigned_plumber_id: plumberUserId,
         status: { 
-          $nin: ['completed', 'Completed'] // Exclude completed jobs
+          $nin: ['completed', 'Completed'] 
         }
       }).toArray();
 
@@ -215,7 +208,6 @@ router.get(
         });
       }
 
-      // Format the response
       const jobs = leads.map(lead => ({
         id: lead._id.toString(),
         client: lead.client,
@@ -241,7 +233,6 @@ router.get(
   })
 );
 
-// CORRECTED: Get completed jobs
 router.get('/completed-jobs', verifyPlumberToken, asyncHandler(async (req, res) => {
   const plumberUserId = req.user.user_id.toString();
   console.log('Fetching completed jobs for plumber:', plumberUserId);
@@ -249,13 +240,12 @@ router.get('/completed-jobs', verifyPlumberToken, asyncHandler(async (req, res) 
   try {
     const db = mongoose.connection.db;
     
-    // Find only completed jobs
     const leads = await db.collection('leads').find({
       assigned_plumber_id: plumberUserId,
       status: { 
-        $in: ['completed', 'Completed'] // Only completed jobs
+        $in: ['completed', 'Completed'] 
       }
-    }).sort({ completion_date: -1 }).toArray(); // Sort by completion date, newest first
+    }).sort({ completion_date: -1 }).toArray(); 
 
     console.log('Found completed jobs:', leads.length);
 
@@ -320,10 +310,8 @@ router.post('/place-order', verifyPlumberToken, [
 
   const { items, client, shipping, billing } = req.body;
 
-  // Calculate total amount
   const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
-  // Create new order
   const order = new Order({
     id: uuidv4(),
     plumber_id: req.user.user_id,
@@ -344,7 +332,6 @@ router.post('/place-order', verifyPlumberToken, [
   });
 }));
 
-// CORRECTED: Submit job completion
 router.post(
   '/jobs/submit-completion',
   verifyPlumberToken,
@@ -363,21 +350,17 @@ router.post(
 
     const db = mongoose.connection.db;
 
-    // Try all possible ID formats to find the job
     let job = null;
     
-    // Try finding by custom 'id' field first
     job = await db.collection('leads').findOne({ id: job_id });
     console.log('Job found by id field:', !!job);
     
     if (!job) {
-      // Try finding by _id as string
       job = await db.collection('leads').findOne({ _id: job_id });
       console.log('Job found by _id (string):', !!job);
     }
     
     if (!job && job_id.length === 24) {
-      // Try finding by _id as ObjectId (if job_id looks like ObjectId)
       try {
         job = await db.collection('leads').findOne({ _id: new mongoose.Types.ObjectId(job_id) });
         console.log('Job found by _id (ObjectId):', !!job);
@@ -405,7 +388,6 @@ router.post(
       status: job.status
     });
 
-    // Check if job is assigned to this plumber
     if (job.assigned_plumber_id !== plumberUserId) {
       return res.status(403).json({ 
         detail: 'Job is not assigned to you',
@@ -417,7 +399,6 @@ router.post(
       });
     }
 
-    // Check if job is in correct status
     const validStatuses = ['Assigned', 'assigned', 'in_progress'];
     if (!validStatuses.includes(job.status)) {
       return res.status(400).json({ 
@@ -440,7 +421,6 @@ router.post(
       completion_submitted_by: plumberUserId,
     };
 
-    // Update using the same ID format that found the job
     const updateFilter = job.id ? { id: job.id } : { _id: job._id };
     const result = await db.collection('leads').updateOne(updateFilter, { $set: completionData });
 
@@ -454,7 +434,6 @@ router.post(
   })
 );
 
-// ADDITIONAL: Admin endpoint to approve job completion (for reference)
 router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(async (req, res) => {
   const { job_id } = req.body;
   
@@ -464,13 +443,11 @@ router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(as
 
   const db = mongoose.connection.db;
   
-  // Find the job
   let job = null;
   if (job_id.length === 24) {
     try {
       job = await db.collection('leads').findOne({ _id: new mongoose.Types.ObjectId(job_id) });
     } catch (error) {
-      // Try other formats if ObjectId fails
     }
   }
   
@@ -489,9 +466,8 @@ router.post('/admin/approve-job-completion', verifyPlumberToken, asyncHandler(as
     });
   }
 
-  // Mark as completed
   const completionData = {
-    status: 'completed', // This will move job to completed section
+    status: 'completed', 
     completion_date: new Date(),
     approved_by: req.user.user_id,
     approved_at: new Date()
@@ -526,6 +502,121 @@ router.get('/coordinator/:id', verifyPlumberToken, async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 });
+
+
+router.get('/check-deletion-eligibility', verifyPlumberToken, asyncHandler(async (req, res) => {
+  const plumberUserId = req.user.user_id.toString();
+  
+  try {
+    const db = mongoose.connection.db;
+    
+    const incompleteJobs = await db.collection('leads').countDocuments({
+      assigned_plumber_id: plumberUserId,
+      status: { 
+        $in: ['assigned', 'Assigned', 'under_review'] 
+      }
+    });
+    
+    const unfulfilledOrders = await Order.countDocuments({
+      plumber_id: plumberUserId,
+      status: { 
+        $in: ['Order-Placed', 'Payment-Completed', 'Dispatched'] 
+      }
+    });
+    
+    console.log('Deletion eligibility check:', {
+      plumber_id: plumberUserId,
+      incompleteJobs,
+      unfulfilledOrders
+    });
+    
+    const canDelete = (incompleteJobs === 0 && unfulfilledOrders === 0);
+    
+    res.json({
+      canDelete,
+      incompleteJobs,
+      unfulfilledOrders
+    });
+    
+  } catch (error) {
+    console.error('Error checking deletion eligibility:', error);
+    res.status(500).json({ 
+      detail: 'Failed to check deletion eligibility',
+      error: error.message 
+    });
+  }
+}));
+
+router.put('/delete-account', verifyPlumberToken, asyncHandler(async (req, res) => {
+  const plumberUserId = req.user.user_id;
+  const { kyc_status } = req.body;
+  
+  if (kyc_status !== 'deleted') {
+    return res.status(400).json({ 
+      detail: 'Invalid kyc_status value' 
+    });
+  }
+  
+  try {
+    const db = mongoose.connection.db;
+    
+    const incompleteJobs = await db.collection('leads').countDocuments({
+      assigned_plumber_id: plumberUserId.toString(),
+      status: { 
+        $in: ['assigned', 'Assigned', 'under_review'] 
+      }
+    });
+    
+    const unfulfilledOrders = await Order.countDocuments({
+      plumber_id: plumberUserId,
+      status: { 
+        $in: ['Order-Placed', 'Payment-Completed', 'Dispatched'] 
+      }
+    });
+    
+    if (incompleteJobs > 0 || unfulfilledOrders > 0) {
+      return res.status(400).json({
+        detail: 'Cannot delete account. Please complete all jobs and orders first.',
+        incompleteJobs,
+        unfulfilledOrders
+      });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      plumberUserId,
+      { 
+        $set: { 
+          kyc_status: 'deleted',
+          deleted_at: new Date()
+        } 
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ detail: 'Plumber not found' });
+    }
+    
+    console.log('Account deleted successfully:', {
+      user_id: plumberUserId,
+      kyc_status: user.kyc_status,
+      deleted_at: user.deleted_at
+    });
+    
+    res.json({
+      success: true,
+      message: 'Account deleted successfully',
+      kyc_status: user.kyc_status
+    });
+    
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    res.status(500).json({ 
+      detail: 'Failed to delete account',
+      error: error.message 
+    });
+  }
+}));
 
 
 module.exports = router;

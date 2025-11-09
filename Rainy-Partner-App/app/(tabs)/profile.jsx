@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Linking,
   TextInput,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +29,12 @@ export default function ProfileScreen() {
   const [coordinatorInfo, setCoordinatorInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    right: 0,
+  });
+  const cogButtonRef = useRef(null);
   const [editedData, setEditedData] = useState({
     email: "",
     address: "",
@@ -99,39 +106,31 @@ export default function ProfileScreen() {
       .catch((err) => console.error("An error occurred", err));
   };
 
-useEffect(() => {
-  if (!profile?.profile) return;
+  useEffect(() => {
+    if (!profile?.profile) return;
 
-const getProfileImage = async () => {
-  try {
-    console.log('📸 Fetching profile image...');
-    console.log('Backend URL:', BACKEND_URL);  // ADD THIS
-    console.log('Full URL:', `${BACKEND_URL}/get-image`);  // ADD THIS
-    console.log('Profile key:', profile.profile);
-    
-    const response = await axios.post(
-      `${BACKEND_URL}/get-image`,
-      { key: profile.profile },
-      { 
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000,
+    const getProfileImage = async () => {
+      try {
+        const response = await axios.post(
+          `${BACKEND_URL}/get-image`,
+          { key: profile.profile },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000,
+          }
+        );
+        setImageUrl(response.data.url);
+      } catch (error) {
+        console.error("❌ Full error:", error);
+        console.error("❌ Error response:", error.response?.data);
+        setImageUrl(null);
+      } finally {
+        setLoading(false);
       }
-    );
-    
-    console.log("✅ Response status:", response.status);  // ADD THIS
-    console.log("✅ Fetched profile image URL:", response.data.url);
-    setImageUrl(response.data.url);
-  } catch (error) {
-    console.error("❌ Full error:", error);  // CHANGE THIS
-    console.error("❌ Error response:", error.response?.data);  // ADD THIS
-    setImageUrl(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  getProfileImage();
-}, [profile?.profile, token]);
+    getProfileImage();
+  }, [profile?.profile, token]);
 
   useEffect(() => {
     if (profile) {
@@ -151,6 +150,102 @@ const getProfileImage = async () => {
       });
     }
   }, [profile]);
+
+
+const handleDeleteAccount = async () => {
+  try {
+    setDropdownVisible(false);
+
+    const checkResponse = await axios.get(
+      `${BACKEND_URL}/plumber/check-deletion-eligibility`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const { canDelete, incompleteJobs, unfulfilledOrders } = checkResponse.data;
+
+    if (!canDelete) {
+      let message = 'Please complete the following before deleting your account:\n\n';
+      
+      if (incompleteJobs > 0) {
+        message += `• ${incompleteJobs} incomplete assigned job(s)\n`;
+      }
+      if (unfulfilledOrders > 0) {
+        message += `• ${unfulfilledOrders} unfulfilled order(s)\n`;
+      }
+      
+      Alert.alert(
+        'Cannot Delete Account',
+        message,
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.put(
+                `${BACKEND_URL}/plumber/delete-account`,
+                { kyc_status: 'deleted' },
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                }
+              );
+
+              Alert.alert(
+                'Account Deleted',
+                'Your account has been deleted successfully.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      logout();
+                      router.replace('/login');
+                    },
+                  },
+                ],
+                { cancelable: false }
+              );
+            } catch (deleteError) {
+              console.error('Error deleting account:', deleteError);
+              Alert.alert(
+                'Error',
+                deleteError.response?.data?.detail || 
+                'Failed to delete account. Please try again later.',
+                [{ text: 'OK', style: 'default' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+
+  } catch (error) {
+    console.error('Error checking deletion eligibility:', error);
+    Alert.alert(
+      'Error',
+      error.response?.data?.detail || 
+      'Something went wrong. Please try again later.',
+      [{ text: 'OK', style: 'default' }]
+    );
+  }
+};
 
   const getKycStatusInfo = (status) => {
     switch (status) {
@@ -189,6 +284,16 @@ const getProfileImage = async () => {
     ]);
   };
 
+  const handleDropdown = () => {
+    cogButtonRef.current?.measureInWindow((x, y, width, height) => {
+      setDropdownPosition({
+        top: y + height + 5, 
+        right: 10, 
+      });
+      setDropdownVisible(true);
+    });
+  };
+
   const handleInputChange = (key, value) => {
     setEditedData((prev) => ({ ...prev, [key]: value }));
     setIsModified(true);
@@ -202,7 +307,6 @@ const getProfileImage = async () => {
         payload.email = editedData.email;
       }
 
-      // Handle full address update
       if (
         editedData.address !== profile.address?.address ||
         editedData.city !== profile.address?.city ||
@@ -316,10 +420,52 @@ const getProfileImage = async () => {
     <View style={styles.container}>
       <SafeAreaView edges={["top"]} style={styles.header}>
         <Text style={styles.title}>{t("common.profile")}</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Ionicons name="log-out" size={24} color="#ff0000ff" />
-        </TouchableOpacity>
+        <View style={styles.rightButtons}>
+          <TouchableOpacity
+            ref={cogButtonRef}
+            onPress={handleDropdown}
+            style={styles.logoutButton}
+          >
+            <Ionicons name="cog" size={24} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Ionicons name="log-out" size={24} />
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
+
+      <Modal
+        visible={dropdownVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDropdownVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setDropdownVisible(false)}
+        >
+          <View
+            style={[
+              styles.dropdownContainer,
+              { top: dropdownPosition.top, right: dropdownPosition.right },
+            ]}
+          >
+            <View style={styles.arrowBorder} />
+            <View style={styles.arrowFill} />
+
+            <View style={styles.dropdownMenu}>
+              <TouchableOpacity
+                style={styles.dropdownOption}
+                onPress={handleDeleteAccount}
+              >
+                <Ionicons name="trash-outline" size={20} color="#ff3b30" />
+                <Text style={styles.deleteText}>Delete Account</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <ScrollView
         refreshControl={
@@ -437,7 +583,6 @@ const getProfileImage = async () => {
             )}
           </View>
 
-          {/* Email */}
           <View style={styles.infoItem}>
             <Ionicons name="mail" size={20} color="#666" />
             <View style={styles.infoContent}>
@@ -458,7 +603,6 @@ const getProfileImage = async () => {
             </View>
           </View>
 
-          {/* Address */}
           <View style={styles.infoItem}>
             <Ionicons name="location" size={20} color="#666" />
             <View style={[styles.infoContent, { flex: 1 }]}>
@@ -747,7 +891,6 @@ const getProfileImage = async () => {
           </View>
         </View>
 
-        {/* Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t("profile.support")}</Text>
 
@@ -799,22 +942,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F5F5",
   },
   header: {
-    backgroundColor: "white",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    borderRadius: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#333",
+  },
+  rightButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   logoutButton: {
     padding: 8,
+    color: "red",
   },
   loadingContainer: {
     flex: 1,
@@ -967,5 +1116,65 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     paddingTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+  },
+  dropdownContainer: {
+    position: "absolute",
+  },
+  arrowBorder: {
+    position: "absolute",
+    top: -9,
+    right: 67,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderBottomWidth: 10,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "#d1d5db",
+    zIndex: 2,
+  },
+  arrowFill: {
+    position: "absolute",
+    top: -7.5,
+    right: 67.5,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8.5,
+    borderRightWidth: 8.5,
+    borderBottomWidth: 8.5,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: "white",
+    zIndex: 3,
+  },
+  dropdownMenu: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    padding: 8,
+    minWidth: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  dropdownOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 12,
+    borderRadius: 8,
+  },
+  deleteText: {
+    color: "#ff3b30",
+    fontSize: 16,
+    fontWeight: "500",
   },
 });
