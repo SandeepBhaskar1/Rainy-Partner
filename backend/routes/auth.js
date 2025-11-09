@@ -3,14 +3,22 @@ const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
-const { generateAdminToken, generateToken, generateAdminRefreshToken, verifyAdminToken } = require("../middleware/auth");
+const {
+  generateAdminToken,
+  generateToken,
+  generateAdminRefreshToken,
+  verifyAdminToken,
+} = require("../middleware/auth");
 const { APIError, asyncHandler } = require("../middleware/errorHandler");
-const jwt = require("jsonwebtoken")
+const jwt = require("jsonwebtoken");
 const axios = require("axios");
 
 const router = express.Router();
 
 const otpStorage = new Map();
+
+const TEST_PHONE = "9876543210";
+const TEST_OTP = "720477";
 
 const generateOTP = () => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -20,7 +28,7 @@ const generateOTP = () => {
 
 const sendOTPViaSMS = async (phone, otp) => {
   try {
-        console.log('📤 Sending OTP via Fast2SMS:', { phone, otp });
+    console.log("📤 Sending OTP via Fast2SMS:", { phone, otp });
 
     const response = await axios.post(
       "https://www.fast2sms.com/dev/bulkV2",
@@ -28,9 +36,9 @@ const sendOTPViaSMS = async (phone, otp) => {
         route: "dlt",
         sender_id: "RAINYP",
         message: "202126",
-        variables_values: otp, 
+        variables_values: otp,
         flash: 0,
-        numbers: phone, 
+        numbers: phone,
       },
       {
         headers: {
@@ -39,7 +47,7 @@ const sendOTPViaSMS = async (phone, otp) => {
         },
       }
     );
-console.log('Sending OTP to:', phone, 'via Fast2SMS API');
+    console.log("Sending OTP to:", phone, "via Fast2SMS API");
 
     console.log("✅ Fast2SMS Response:", response.data);
     return response.data;
@@ -66,6 +74,20 @@ router.post(
     }
 
     const { identifier } = req.body;
+
+    if (identifier === TEST_PHONE) {
+      otpStorage.set(identifier, {
+        otp: TEST_OTP,
+        expires: Date.now() + 30 * 60 * 1000,
+      });
+      console.log(`📱 Test OTP for ${identifier}: ${TEST_OTP}`);
+
+      return res.json({
+        message: "OTP sent successfully",
+        ...(process.env.NODE_ENV === "development" && { otp: TEST_OTP }),
+      });
+    }
+
     const otp = generateOTP();
 
     otpStorage.set(identifier, {
@@ -74,18 +96,20 @@ router.post(
     });
 
     try {
-      await sendOTPViaSMS(identifier, otp)
+      await sendOTPViaSMS(identifier, otp);
       console.log(`📱 OTP for ${identifier}: ${otp}`);
 
       res.json({
-        message: 'OTP sent successfully',
-        ...(process.env.NODE_ENV === 'development' && { otp }),
-      })
+        message: "OTP sent successfully",
+        ...(process.env.NODE_ENV === "development" && { otp }),
+      });
     } catch (err) {
       otpStorage.delete(identifier);
-      console.error('Error sending OTP:', err);
-      return res.status(500).json({ detail: 'Failed to send OTP', error: err.message });
-    };
+      console.error("Error sending OTP:", err);
+      return res
+        .status(500)
+        .json({ detail: "Failed to send OTP", error: err.message });
+    }
   })
 );
 
@@ -125,14 +149,46 @@ router.post(
     let user = await User.findByPhone(identifier);
 
     if (!user) {
-      user = new User({
-        phone: identifier,
-        role: "PLUMBER",
-        needs_onboarding: true,
-        kyc_status: "pending",
-      });
+      if (identifier === TEST_PHONE) {
+        user = new User({
+          phone: identifier,
+          name: "Test Plumber - Google Review",
+          email: "testplumber@rainyfilters.com",
+          role: "PLUMBER",
+          needs_onboarding: false,
+          kyc_status: "approved",
+          agreement_status: true,
+          trust: 100,
+          approvedAt: new Date(),
+          address: {
+            address: "Test Address, MG Road",
+            city: "Bangalore",
+            district: "Bangalore Urban",
+            state: "Karnataka",
+            pin: "560001",
+          },
+          service_area_pin: ["560001", "560002", "560003"],
+          experience: 5,
+          tools: ["Wrench", "Plunger", "Pipe Cutter", "Drill Machine"],
+          aadhaar_number: "XXXX-XXXX-1234",
+          plumber_license_number: "TEST-LIC-001",
+        });
+      } else {
+        user = new User({
+          phone: identifier,
+          role: "PLUMBER",
+          needs_onboarding: true,
+          kyc_status: "pending",
+        });
+      }
       await user.save();
       console.log(`👤 New plumber registered: ${identifier}`);
+    } else if (identifier === TEST_PHONE) {
+      console.log(`Test account login: ${identifier}`);
+      user.kyc_status = "approved";
+      user.needs_onboarding = false;
+      user.agreement_status = true;
+      user.approvedAt = user.approvedAt || new Date();
     }
 
     user.last_login = new Date();
@@ -256,20 +312,20 @@ router.post(
 
       res.cookie("access_token", accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
         maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refresh_token", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       console.log("✅ Cookies set successfully");
-console.log("Response headers:", res.getHeaders());
+      console.log("Response headers:", res.getHeaders());
 
       res.status(200).json({
         success: true,
@@ -295,7 +351,10 @@ console.log("Response headers:", res.getHeaders());
 router.post(
   "/coordinator-login",
   [
-    body("identifier").trim().notEmpty().withMessage("Email or phone number is required"),
+    body("identifier")
+      .trim()
+      .notEmpty()
+      .withMessage("Email or phone number is required"),
     body("password").trim().notEmpty().withMessage("Password is required"),
   ],
   async (req, res) => {
@@ -318,7 +377,10 @@ router.post(
         return res.status(404).json({ message: "Coordinator not found" });
       }
 
-      console.log("✅ Found coordinator:", coordinator.email || coordinator.phone);
+      console.log(
+        "✅ Found coordinator:",
+        coordinator.email || coordinator.phone
+      );
 
       if (coordinator.role !== "COORDINATOR") {
         console.log("🚫 Unauthorized role:", coordinator.role);
@@ -332,12 +394,11 @@ router.post(
         return res.status(401).json({ message: "Invalid password." });
       }
 
-      coordinator.last_login = new Date()
+      coordinator.last_login = new Date();
       await coordinator.save();
 
       const accessToken = generateAdminToken(coordinator);
       const refreshToken = generateAdminRefreshToken(coordinator);
-
 
       res.cookie("access_token", accessToken, {
         httpOnly: true,
@@ -363,37 +424,48 @@ router.post(
           name: coordinator.name,
           email: coordinator.email,
           phone: coordinator.phone,
-          role: coordinator.role
+          role: coordinator.role,
         },
       });
     } catch (error) {
       console.error("💥 Coordinator login error:", error);
-      return res.status(500).json({ message: "Server error", error: error.message });
+      return res
+        .status(500)
+        .json({ message: "Server error", error: error.message });
     }
   }
 );
-
 
 router.post(
   "/refresh-token",
   asyncHandler(async (req, res) => {
     const refreshToken = req.cookies.refresh_token;
-    
+
     if (!refreshToken) {
       return res.status(401).json({ detail: "No refresh token provided" });
     }
 
     try {
-      const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET_KEY);
-      
-      const user = await User.findById(decoded.id).select('+refreshTokenVersion');
-      
+      const decoded = jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET_KEY
+      );
+
+      const user = await User.findById(decoded.id).select(
+        "+refreshTokenVersion"
+      );
+
       if (!user || !user.is_active) {
         return res.status(401).json({ detail: "User not found or inactive" });
       }
 
-      if (user.refreshTokenVersion && decoded.version !== user.refreshTokenVersion) {
-        return res.status(401).json({ detail: "Refresh token has been revoked" });
+      if (
+        user.refreshTokenVersion &&
+        decoded.version !== user.refreshTokenVersion
+      ) {
+        return res
+          .status(401)
+          .json({ detail: "Refresh token has been revoked" });
       }
 
       const newAccessToken = generateAdminToken(user);
@@ -403,17 +475,17 @@ router.post(
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-        path: "/", 
+        path: "/",
       };
 
       res.cookie("access_token", newAccessToken, {
         ...cookieOptions,
-        maxAge: 15 * 60 * 1000, 
+        maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refresh_token", newRefreshToken, {
         ...cookieOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000, 
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       res.json({
@@ -421,7 +493,6 @@ router.post(
         access_token: newAccessToken,
         expires_in: 900,
       });
-
     } catch (error) {
       res.clearCookie("refresh_token", {
         httpOnly: true,
@@ -447,14 +518,18 @@ router.get("/verify", async (req, res) => {
   try {
     const token = req.cookies.access_token;
     if (!token) {
-      return res.status(401).json({ loggedIn: false, message: "No access token" });
+      return res
+        .status(401)
+        .json({ loggedIn: false, message: "No access token" });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
     const user = await User.findById(decoded.id).select("-password_hash");
 
     if (!user) {
-      return res.status(401).json({ loggedIn: false, message: "User not found" });
+      return res
+        .status(401)
+        .json({ loggedIn: false, message: "User not found" });
     }
 
     res.status(200).json({
@@ -463,31 +538,36 @@ router.get("/verify", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
   } catch (err) {
     console.error("Error verifying token:", err.message);
-    return res.status(500).json({ loggedIn: false, message: "Token verification failed" });
+    return res
+      .status(500)
+      .json({ loggedIn: false, message: "Token verification failed" });
   }
 });
 
-router.post("/admin-logout", asyncHandler(async (req, res) => {
-  res.clearCookie("access_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
-    path: '/'
-  });
+router.post(
+  "/admin-logout",
+  asyncHandler(async (req, res) => {
+    res.clearCookie("access_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      path: "/",
+    });
 
-  res.clearCookie("refresh_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
-    path: '/'
-  });
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      path: "/",
+    });
 
-  res.status(200).json({ success: true, message: "Logged out successfully" });
-}));
+    res.status(200).json({ success: true, message: "Logged out successfully" });
+  })
+);
 
 module.exports = router;
