@@ -43,7 +43,7 @@ export default function JobsScreen() {
   const [loadingPending, setLoadingPending] = useState(false);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   
-  const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
   const MAX_FILE_SIZE = 2 * 1024 * 1024;
   const [signedUrls, setSignedUrls] = useState({
     serialNumber: null,

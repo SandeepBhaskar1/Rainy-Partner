@@ -44,7 +44,7 @@ export default function Onboarding() {
   });
 
   const MAX_FILE_SIZE = 2 * 1024 * 1024;
-  const BACKEND_URL_LOCAL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   const [images, setImages] = useState({
     profile: null,
@@ -72,7 +72,7 @@ export default function Onboarding() {
   const getSignedUrlFromKey = async (s3Key, token) => {
     try {
       const response = await axios.post(
-        `${BACKEND_URL_LOCAL}/get-image`,
+        `${BACKEND_URL}/get-image`,
         { key: s3Key },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -327,7 +327,7 @@ export default function Onboarding() {
       }
 
       const response = await axios.post(
-        `${BACKEND_URL_LOCAL}/uploadurl`,
+        `${BACKEND_URL}/uploadurl`,
         {
           docType: file.docType,
           fileType: file.ext,
@@ -442,7 +442,7 @@ export default function Onboarding() {
       };
 
       const response = await axios.post(
-        `${BACKEND_URL_LOCAL}/onboarding`,
+        `${BACKEND_URL}/onboarding`,
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );

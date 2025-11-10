@@ -23,7 +23,7 @@ export default function PlaceOrderScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [billingIsSameAsShipping, setBillingIsSameAsShipping] = useState(true);
-  const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   const [customerInfo, setCustomerInfo] = useState({
     name: "",

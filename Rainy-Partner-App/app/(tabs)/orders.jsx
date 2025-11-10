@@ -73,7 +73,7 @@ const [activeTab, setActiveTab] = useState(
   });
   
   const [billingIsSameAsShipping, setBillingIsSameAsShipping] = useState(true);
-  const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   // Fetch products function
   const fetchProducts = async () => {

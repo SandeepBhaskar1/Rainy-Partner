@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
-import { BACKEND_URL_LOCAL } from '@env';
 import { navigate } from 'expo-router/build/global-state/routing';
 
 const AuthContext = createContext(undefined);
@@ -12,11 +11,16 @@ export function AuthProvider({ children }) {
     const [token, setToken] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [Backend_url, setBackend_url] = useState(null);
+    const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
     useEffect(() => {
-        const url = process.env.BACKEND_URL_LOCAL;
+        const url = process.env.EXPO_PUBLIC_BACKEND_URL;
         setBackend_url(url);
     }, []); 
+
+console.log('=== ENV CHECK ===');
+console.log('BACKEND_URL:', process.env.EXPO_PUBLIC_BACKEND_URL);
+console.log('Type:', typeof process.env.EXPO_PUBLIC_BACKEND_URL);
 
     const checkAuthStatus = async () => {
         try {
@@ -38,15 +42,12 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         checkAuthStatus();
-
-        // CORRECTION: Updated interceptor to exclude agreement and profile endpoints from auto-logout on 401
         const interceptor = axios.interceptors.response.use(
             response => response,
             async (error) => {
                 const isAgreementRequest = error.config?.url?.includes('/plumber/agreement');
                 const isProfileRequest = error.config?.url?.includes('/profile');
-                
-                // CORRECTION: Only logout if 401 occurs on non-critical endpoints
+            
                 if (error.response?.status === 401 && !isAgreementRequest && !isProfileRequest){
                     console.warn('Token Expired, logging out...');
                     await logout()
@@ -63,7 +64,7 @@ export function AuthProvider({ children }) {
     const requestOtp = async (identifier) => {
         try {
 
-            const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/send-otp`, { identifier });
+            const response = await axios.post(`${BACKEND_URL}/auth/send-otp`, { identifier });
 
             return response.data;
         } catch (error) {
@@ -90,7 +91,7 @@ export function AuthProvider({ children }) {
 
     const loginWithOTP = async (identifier, otp) => {
         try {
-            const response = await axios.post(`${BACKEND_URL_LOCAL}/auth/verify-otp`, {
+            const response = await axios.post(`${BACKEND_URL}/auth/verify-otp`, {
                 identifier,
                 otp
             });

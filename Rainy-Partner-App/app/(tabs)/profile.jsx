@@ -49,7 +49,7 @@ export default function ProfileScreen() {
   const [isModified, setIsModified] = useState(false);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
   const router = useRouter();
 
   const {

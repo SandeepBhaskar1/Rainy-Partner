@@ -25,7 +25,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const { t } = useLanguage();
 
-  const BACKEND_URL = process.env.BACKEND_URL_LOCAL;
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   const fetchProfile = async (token) => {
     try {
