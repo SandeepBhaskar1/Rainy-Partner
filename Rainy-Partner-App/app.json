@@ -3,7 +3,7 @@
     "name": "Rainy Partner App",
     "slug": "Rainy-Partner-App",
     "scheme": "Rainy-Partner",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/Rainy-App-Icon.png",
     "userInterfaceStyle": "light",
