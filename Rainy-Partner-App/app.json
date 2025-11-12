@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "package": "com.rainyfilters.rainyplumber",
-        "foregroundImage": "./assets/Rainy-Filter-Logo-01.png",
+        "foregroundImage": "./assets/Rainy-App-Icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -30,7 +30,7 @@
       "package": "com.rainyplumbers.RainyPartnerApp"
     },
     "web": {
-      "favicon": "./assets/Rainy_Filter_Logo.png"
+      "favicon": "./assets/Rainy_App_Icon.png"
     },
     "plugins": [
       "expo-localization"

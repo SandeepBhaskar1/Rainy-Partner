@@ -62,7 +62,6 @@ export default function LoginScreen({ navigation }) {
         setOtpSent(true);
         const otpValue = responseData?.otp || response?.otp;
         
-        // In development, show OTP (remove in production)
         if (__DEV__ && otpValue) {
           Alert.alert(
             "OTP Sent Successfully", 
@@ -71,16 +70,14 @@ export default function LoginScreen({ navigation }) {
           Alert.alert("Success", "OTP sent successfully! Please check your SMS.");
         }
       } else {
-        // If response doesn't match success criteria
         throw new Error(responseData?.message || "Failed to send OTP");
       }
     } catch (error) {
-      console.error("OTP Send Error:", error); // Debug log
-      console.error("Error Response:", error.response); // Debug log
+      console.error("OTP Send Error:", error);
+      console.error("Error Response:", error.response);
       
       let message = "Failed to send OTP. Please try again.";
       
-      // Extract error message from various error structures
       if (error.response?.data?.message) {
         message = error.response.data.message;
       } else if (error.response?.data?.error) {
@@ -116,13 +113,26 @@ export default function LoginScreen({ navigation }) {
         const userDataStr = await AsyncStorage.getItem("user_data");
         const userData = userDataStr ? JSON.parse(userDataStr) : null;
 
-        // Store token securely
         const token = await AsyncStorage.getItem("access_token");
         if (token) {
           await SecureStore.setItemAsync("access_token", token);
         }
 
-        // Navigation logic
+        if (userData?.kyc_status === "deleted") {
+            Alert.alert(
+              "Account Deleted",
+              "Your account has been permanently deleted. Please contact support if you need additional information.",
+              [
+                { text: "OK", onPress: async () => {
+                  await AsyncStorage.removeItem('user_data');
+                  await SecureStore.deleteItemAsync('access_token');
+                  router.replace("/login")
+                } }
+              ]
+            );
+            return;
+          }
+
         if (userData?.needs_onboarding) {
           const savedLanguage = await AsyncStorage.getItem("app_language");
 
@@ -130,7 +140,7 @@ export default function LoginScreen({ navigation }) {
             router.replace("/languageSelectionPage");
           } else {
             router.replace("/onboarding");
-          }
+          } 
         } else {
           router.replace("/(tabs)/home");
         }
@@ -398,17 +408,14 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // CORRECTION: Added missing buttonDisabled style
   buttonDisabled: {
     backgroundColor: "#666",
   },
-  // CORRECTION: Added missing buttonText style
   buttonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "bold",
   },
-  // CORRECTION: Added missing inputContainer style
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",

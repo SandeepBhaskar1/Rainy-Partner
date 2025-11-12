@@ -596,6 +596,16 @@ router.put('/delete-account', verifyPlumberToken, asyncHandler(async (req, res) 
     if (!user) {
       return res.status(404).json({ detail: 'Plumber not found' });
     }
+
+    await User.updateMany(
+      {
+        role: 'COORDINATOR',
+        assigned_plumbers: plumberUserId
+      },
+      {
+        $pull: { assigned_plumbers: plumberUserId }
+      }
+    )
     
     console.log('Account deleted successfully:', {
       user_id: plumberUserId,

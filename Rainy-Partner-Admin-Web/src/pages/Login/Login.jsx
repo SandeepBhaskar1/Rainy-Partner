@@ -1,30 +1,30 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext"; // ADDED
+import { useAuth } from "../../context/AuthContext";
 import "./Login.css";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false); // ADDED
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useAuth(); // ADDED
+  const { setUser } = useAuth();
 
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true); // ADDED
+    setIsLoading(true);
 
     try {
       const res = await axios.post(`${BACKEND_URL}/auth/admin-login`, {
         email,
         password,
       }, {
-        withCredentials: true // CRITICAL: Allows backend to set httpOnly cookies
+        withCredentials: true
       });
 
       console.log("Login response:", res.data);
@@ -32,14 +32,10 @@ const Login = () => {
       if (res.data.success) {
         const userData = res.data.admin;
         
-        // CHANGED: No need to store token - it's in httpOnly cookie
-        // Just store user data for quick access
         sessionStorage.setItem("user", JSON.stringify(userData));
         
-        // ADDED: Update context
         setUser(userData);
         
-        // Navigate to dashboard
         navigate("/");
       } else {
         setError("Invalid credentials");
@@ -52,7 +48,7 @@ const Login = () => {
         "Invalid Credentials."
       );
     } finally {
-      setIsLoading(false); // ADDED
+      setIsLoading(false);
     }
   };
 
@@ -92,7 +88,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    disabled={isLoading} // ADDED
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -105,7 +101,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    disabled={isLoading} // ADDED
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -116,9 +112,9 @@ const Login = () => {
                 <button 
                   type="submit" 
                   className="login-button"
-                  disabled={isLoading} // ADDED
+                  disabled={isLoading}
                 >
-                  {isLoading ? "Signing In..." : "Sign In"} {/* ADDED */}
+                  {isLoading ? "Signing In..." : "Sign In"}
                 </button>
               </form>
 
