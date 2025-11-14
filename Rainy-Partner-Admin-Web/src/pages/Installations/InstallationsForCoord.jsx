@@ -48,7 +48,6 @@ const Installations = () => {
     (value) => value.trim() !== ""
   );
 
-  // Toast notification function
   const showToast = (message, type = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => {
@@ -93,7 +92,6 @@ const Installations = () => {
           setError(true);
         }
 
-        // Fetch plumbers based on role
         try {
           const endpoint =
             role === "coordinator"
@@ -128,16 +126,13 @@ const Installations = () => {
   const fetchSignedUrls = async () => {
     const urls = {};
 
-    // Get only installations that coordinator should see
     let installationsToFetch = installations;
 
     if (userRole === "coordinator") {
       installationsToFetch = installations.filter((inst) => {
-        // Include not-assigned (open) installations
         if (inst.status === "not-assigned") {
           return true;
         }
-        // Include only installations assigned to coordinator's plumbers
         const plumberId = String(inst.assigned_plumber_id || "");
         return assignedPlumberIds.some((id) => String(id) === plumberId);
       });
@@ -146,7 +141,6 @@ const Installations = () => {
     for (const inst of installationsToFetch) {
       const { completion_images } = inst;
 
-      // Skip if no completion images object or all image keys are missing
       if (
         !completion_images ||
         (!completion_images.serial_number_key &&
@@ -174,7 +168,6 @@ const Installations = () => {
         }
       }
 
-      // Fetch warranty card image
       if (completion_images.warranty_card_key) {
         try {
           const res = await api.post(
@@ -191,7 +184,6 @@ const Installations = () => {
         }
       }
 
-      // Fetch installation image
       if (completion_images.installation_key) {
         try {
           const res = await api.post(
@@ -336,7 +328,6 @@ const Installations = () => {
           model: "",
         });
 
-        // Refresh installations
         const installationsRes = await api.get(`${BACKEND_URL}/post-leads`);
         setInstallations(installationsRes.data);
       }

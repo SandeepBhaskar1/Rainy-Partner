@@ -44,13 +44,12 @@ const Plumbers = () => {
   const BACKEND_URL = import.meta.env.VITE_APP_BACKEND_URL;
 
   useEffect(() => {
-
     const fetchData = async () => {
       try {
         const [filterRes, coordRes, plumbersRes, leadsRes] = await Promise.all([
           api.get(`/admin/plumbers/filters`),
           api.get(`/admin/co-ordinators`),
-          api.get(`/admin/plumbers`),
+          api.get(`/admin/plumbers?limit=999999`),
           api.get(`/post-leads`),
         ]);
 
@@ -60,6 +59,7 @@ const Plumbers = () => {
         const fetchedCities = filterRes.data.cities || [];
         const fetchedPlumbers = plumbersRes.data.plumbers || [];
         const fetchedLeads = leadsRes.data.installations || leadsRes.data || [];
+        console.log(plumbersRes.data.plumbers);
 
         setStates(fetchedStates);
         setPlumbers(fetchedPlumbers);
@@ -111,10 +111,9 @@ const Plumbers = () => {
       try {
         const keys = plumbersWithProfiles.map((p) => p.profile);
 
-        const res = await api.post(
-          `/admin/get-multiple-plumber-profiles`,
-          { keys }
-        );
+        const res = await api.post(`/admin/get-multiple-plumber-profiles`, {
+          keys,
+        });
 
         const images = {};
         plumbersWithProfiles.forEach((plumber) => {
@@ -710,6 +709,14 @@ const Plumbers = () => {
                                                             alert(
                                                               "Plumber deleted successfully."
                                                             );
+                                                            setPlumbers(
+                                                              (prev) =>
+                                                                prev.filter(
+                                                                  (p) =>
+                                                                    p.id !==
+                                                                    plumber.id
+                                                                )
+                                                            );
                                                           } catch (error) {
                                                             console.error(
                                                               "Error deleting plumber:",
@@ -873,7 +880,7 @@ const Plumbers = () => {
                           try {
                             const res = await api.post(
                               `/installations/get-image`,
-                              { key: docKey },
+                              { key: docKey }
                             );
                             const signedUrl =
                               res.data?.url ||
@@ -900,7 +907,6 @@ const Plumbers = () => {
                   );
                 })}
 
-                {/* If no docs available */}
                 {!selectedPlumber.aadhaar_front &&
                   !selectedPlumber.aadhaar_back &&
                   !selectedPlumber.license_front &&

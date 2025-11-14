@@ -13,14 +13,94 @@ const {
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const bcrypt = require("bcryptjs/dist/bcrypt");
 const Lead = require("../models/Lead");
+const { sendAssignedSMS, sendCustomerSMS } = require("../utils/fast2sms");
 
 const router = express.Router();
+
+router.get('/stats', verifyCoordinateToken, async (req, res) => {
+  try {
+    const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
+    const approved = plumbers.filter(p => p.kyc_status === 'approved').length;
+    const pending = plumbers.filter(p => p.agreement_status === true && p.kyc_status === 'pending' ).length;
+    const rejected = plumbers.filter(p => p.kyc_status === 'rejected').length;
+
+    const ordersCount = await Order.countDocuments();
+    const leadsCount = await Lead.countDocuments();
+
+    const openInstallations = await Lead.countDocuments({ status: /pending/i });
+    const awaitingDispatch = await Order.countDocuments({ status: /processing/i });
+
+    const unassignedLeads = await Lead.find({ status: { $in: ["not-assigned", "Pending"] }})
+      .select('client model_purchased created_at')
+      .sort({ created_at: -1 })
+      .lean();
+
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+
+    const nowIST = new Date(now.getTime() + istOffset);
+    console.log('Current IST Time:', nowIST.toISOString());
+
+    const startOfTodayUTC = new Date(Date.UTC(
+      nowIST.getUTCFullYear(),
+      nowIST.getUTCMonth(),
+      nowIST.getUTCDate()
+    ) - istOffset);
+
+    const endOfTodayUTC = new Date(Date.UTC(
+      nowIST.getUTCFullYear(),
+      nowIST.getUTCMonth(),
+      nowIST.getUTCDate(),
+      23, 59, 59, 999
+    ) - istOffset);
+
+    const todayOrders = await Order.find({
+      created_at: { $gte: startOfTodayUTC, $lte: endOfTodayUTC }
+    }).select('total_amount created_at');
+
+    console.log('\nMatched orders:', todayOrders);
+    const todayOrderCount = todayOrders.length;
+    const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+
+    const allOrders = await Order.find()
+      .select('createdAt total_amount')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      plumbers: {
+        total: plumbers.length,
+        approved,
+        pending,
+        rejected
+      },
+      orders: {
+        total: ordersCount,
+        awaitingDispatch,
+        todayOrders: todayOrderCount,
+        todayRevenue
+      },
+      leads: {
+        total: leadsCount,
+        openInstallations,
+        unassigned: unassignedLeads
+      },
+      ordersList: allOrders
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({
+      detail: 'Error fetching stats',
+      error: error.message
+    });
+  }
+});
 
 router.get(
   "/plumbers",
   verifyCoordinateToken,
   asyncHandler(async (req, res) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 999999 } = req.query;
 
     let filter = { role: "PLUMBER" };
     if (status) {
@@ -111,20 +191,29 @@ router.post(
   }
 );
 
-router.get('/profile', verifyCoordinateToken, async (req, res) => {
+router.get("/profile", verifyCoordinateToken, async (req, res) => {
   const coordinator = await User.findById(req.user.id);
   res.json(coordinator);
 });
 
-router.post('/post-leads', verifyCoordinateToken, async (req, res) => {
+router.post("/post-leads", verifyCoordinateToken, async (req, res) => {
   try {
     const { client, model_purchased } = req.body;
 
-    if (!client || !client.name || !client.phone || !client.address || !client.city ||
+    if (
+      !client ||
+      !client.name ||
+      !client.phone ||
+      !client.address ||
+      !client.city ||
       !client.district ||
       !client.state ||
-      !client.pincode || !model_purchased) {
-      return res.status(400).json({ message: 'Client info and model_purchased are required' });
+      !client.pincode ||
+      !model_purchased
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Client info and model_purchased are required" });
     }
 
     const newLead = new Lead({
@@ -142,139 +231,159 @@ router.post('/post-leads', verifyCoordinateToken, async (req, res) => {
 
     await newLead.save();
 
-    res.status(201).json({ message: 'Lead created successfully', lead: newLead });
+    sendCustomerSMS(client.phone).catch((err) => {
+      console.error("Error sending customer SMS:", err);
+    });
+    res
+      .status(201)
+      .json({ message: "Lead created successfully", lead: newLead });
   } catch (error) {
-    console.error('Error creating lead:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error creating lead:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-router.get('/post-leads', verifyCoordinateToken, async (req, res) => {
+router.get("/post-leads", verifyCoordinateToken, async (req, res) => {
+  try {
+    const leads = await Lead.find().sort({ created_at: -1 });
+    res.json(leads);
+    console.log(leads);
+  } catch (error) {
+    console.error("Error fetching leads:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put(
+  "/plumber/:id/delete",
+  verifyCoordinateToken,
+  asyncHandler(async (req, res) => {
+    const plumber = await User.findOne({ _id: req.params.id, role: "PLUMBER" });
+
+    if (!plumber) {
+      return res.status(404).json({ message: "Plumber not found" });
+    }
+
+    plumber.is_active = false;
+    plumber.kyc_status = "deleted";
+    plumber.deleted_at = new Date();
+    plumber.deleted_by = req.user.id;
+    await plumber.save();
+
+    res.json({ message: "Plumber marked as deleted successfully" });
+  })
+);
+
+router.put("/:leadId/assign", verifyCoordinateToken, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const { assigned_plumber_id, status } = req.body;
+
+    if (!assigned_plumber_id || !status) {
+      return res
+        .status(400)
+        .json({ message: "Plumber ID and status are required" });
+    }
+
+    const lead = await Lead.findById(leadId);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    const plumber = await User.findById(assigned_plumber_id);
+    if (!plumber) return res.status(404).json({ message: "Plumber not found" });
+
+    lead.assigned_plumber_id = assigned_plumber_id;
+    lead.status = status;
+
+    await lead.save();
+
+    console.log("Lead after save:", lead);
+
+    sendAssignedSMS(plumber.phone).catch((err) => {
+      console.error("Error sending assignment SMS:", err);
+    });
+
+    res.status(200).json({ message: "Plumber assigned successfully", lead });
+  } catch (error) {
+    console.error("Error assigning plumber:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/:leadId/reassign", verifyCoordinateToken, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const { assigned_plumber_id, status } = req.body;
+
+    if (!assigned_plumber_id || !status) {
+      return res
+        .status(400)
+        .json({ message: "Plumber ID and status are required" });
+    }
+
+    const lead = await Lead.findById(leadId);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    lead.assigned_plumber_id = assigned_plumber_id;
+    lead.status = status;
+
+    await lead.save();
+
+    console.log("Lead after save:", lead);
+
+    res.status(200).json({ message: "Plumber assigned successfully", lead });
+  } catch (error) {
+    console.error("Error assigning plumber:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put(
+  "/:leadId/status-completed",
+  verifyCoordinateToken,
+  async (req, res) => {
     try {
-        const leads = await Lead.find().
-        sort({ created_at: -1 });   
-        res.json(leads);
-        console.log(leads);
-        
+      const { leadId } = req.params;
+      const { status } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ message: "Status Reqquired " });
+      }
+
+      const lead = await Lead.findById(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      lead.status = status;
+
+      await lead.save();
+
+      res.status(200).json({ message: "Installation Approved.", lead });
     } catch (error) {
-        console.error('Error fetching leads:', error);
-        res.status(500).json({ message: 'Server error' });
+      console.error("Error Approving Installation:", error);
+      res.status(500).json({ message: "Server error" });
     }
-});
-
-router.put('/plumber/:id/delete', verifyCoordinateToken, asyncHandler(async (req, res) => {
-  const plumber = await User.findOne({ _id: req.params.id, role: 'PLUMBER' });
-
-  if (!plumber) {
-    return res.status(404).json({ message: 'Plumber not found' });
   }
+);
 
-  plumber.is_active = false;
-  plumber.kyc_status = 'deleted';
-  plumber.deleted_at = new Date();
-  plumber.deleted_by = req.user.id;
-  await plumber.save();
-
-  res.json({ message: 'Plumber marked as deleted successfully' });
-}));
-
-router.put('/:leadId/assign', verifyCoordinateToken, async (req, res) => {
-  try {
-    const { leadId } = req.params;
-    const { assigned_plumber_id, status } = req.body;
-
-
-    if (!assigned_plumber_id || !status) {
-      return res.status(400).json({ message: 'Plumber ID and status are required' });
-    }
-
-    const lead = await Lead.findById(leadId);
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
-
-    lead.assigned_plumber_id = assigned_plumber_id;
-    lead.status = status;
-
-    await lead.save();
-
-    console.log('Lead after save:', lead);
-
-    res.status(200).json({ message: 'Plumber assigned successfully', lead });
-  } catch (error) {
-    console.error('Error assigning plumber:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.put('/:leadId/reassign', verifyCoordinateToken, async (req, res) => {
-  try {
-    const { leadId } = req.params;
-    const { assigned_plumber_id, status } = req.body;
-
-
-    if (!assigned_plumber_id || !status) {
-      return res.status(400).json({ message: 'Plumber ID and status are required' });
-    }
-
-    const lead = await Lead.findById(leadId);
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
-
-    lead.assigned_plumber_id = assigned_plumber_id;
-    lead.status = status;
-
-    await lead.save();
-
-    console.log('Lead after save:', lead);
-
-    res.status(200).json({ message: 'Plumber assigned successfully', lead });
-  } catch (error) {
-    console.error('Error assigning plumber:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.put('/:leadId/status-completed', verifyCoordinateToken, async (req, res) => {
-  try {
-    const { leadId } = req.params;
-    const { status } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ message: 'Status Reqquired ' });
-    }
-
-    const lead = await Lead.findById(leadId);
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
-
-    lead.status = status;
-
-    await lead.save();
-
-    res.status(200).json({ message: 'Installation Approved.', lead });
-  } catch (error) {
-    console.error('Error Approving Installation:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.put('/:leadId/cancel', verifyCoordinateToken, async (req, res) => {
+router.put("/:leadId/cancel", verifyCoordinateToken, async (req, res) => {
   try {
     const { leadId } = req.params;
 
     const lead = await Lead.findById(leadId);
-    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-    lead.assigned_plumber_id = '';
-    lead.status = 'not-assigned';
+    lead.assigned_plumber_id = "";
+    lead.status = "not-assigned";
     lead.cancelled_at = new Date();
     lead.cancelled_by = req.user?._id || req.user?.id || null;
 
     await lead.save();
 
-    console.log('Lead after save:', lead);
+    console.log("Lead after save:", lead);
 
-    res.status(200).json({ message: 'Plumber cancelled successfully', lead });
+    res.status(200).json({ message: "Plumber cancelled successfully", lead });
   } catch (error) {
-    console.error('Error cancelling plumber:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error cancelling plumber:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -282,7 +391,7 @@ router.get(
   "/orders",
   verifyCoordinateToken,
   asyncHandler(async (req, res) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 999999 } = req.query;
 
     let filter = {};
     if (status) {
@@ -359,7 +468,8 @@ router.post(
       });
     }
 
-    const { plumber_id, items, client, shipping, billing, order_created_by } = req.body;
+    const { plumber_id, items, client, shipping, billing, order_created_by } =
+      req.body;
 
     const totalAmount = items.reduce(
       (sum, item) => sum + item.quantity * item.price,
@@ -374,7 +484,7 @@ router.post(
       billing: billing || shipping,
       total_amount: totalAmount,
       status: "Order-Placed",
-      order_created_by
+      order_created_by,
     });
 
     await order.save();
@@ -411,8 +521,15 @@ router.put(
     }
 
     const { orderId } = req.params;
-    const { status, awb_number, fulfilled_at, cancelledAt, cancelledBy, cancelled_reason } = req.body;
-    const userId = req.user?.id || req.user?._id
+    const {
+      status,
+      awb_number,
+      fulfilled_at,
+      cancelledAt,
+      cancelledBy,
+      cancelled_reason,
+    } = req.body;
+    const userId = req.user?.id || req.user?._id;
 
     const order = await Order.findOne({ _id: orderId });
 
@@ -429,8 +546,7 @@ router.put(
       order.fulfilled_at = new Date(fulfilled_at);
     }
 
-    
-    if (order.status === "Cancelled"){
+    if (order.status === "Cancelled") {
       order.cancelled_reason = cancelled_reason;
       order.cancelledAt = cancelledAt || Date.now();
       order.cancelledBy = cancelledBy || userId;
@@ -444,7 +560,7 @@ router.put(
       status,
       cancelledAt,
       cancelled_reason,
-      cancelled_reason
+      cancelled_reason,
     });
   })
 );
@@ -575,77 +691,75 @@ router.post(
   })
 );
 
-router.post('/reset-password-otp', async (req, res) => {    
-    try {
-        const { phone } = req.body;
-        const user = await User.findOne({phone});
-        if (!user) return res.status(404).json({message: 'User not found.'});
+router.post("/reset-password-otp", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const user = await User.findOne({ phone });
+    if (!user) return res.status(404).json({ message: "User not found." });
 
-        const otp = Math.floor(100000 + Math.random() * 900000);
-        const otpExpiry = Date.now() + 3 * 60 * 1000;
-        
-        user.resetOtp = otp;
-        user.otpExpiry = otpExpiry;
-        await user.save();
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    const otpExpiry = Date.now() + 3 * 60 * 1000;
 
-        console.log(`OTP for ${phone} is : ${otp}`);
-        
-        res.json({message: 'OTP sent successfully.'})
-    } catch (error) {
-        console.error(err);
-        res.status(500).json({message: 'Server Error'})
-    }
+    user.resetOtp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    console.log(`OTP for ${phone} is : ${otp}`);
+
+    res.json({ message: "OTP sent successfully." });
+  } catch (error) {
+    console.error(err);
+    res.status(500).json({ message: "Server Error" });
+  }
 });
 
-router.post('/verify-reset-otp', async(req, res) =>{
-    try {
-        const { phone, otp } = req.body;
-        const user = await User.findOne({phone});
+router.post("/verify-reset-otp", async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    const user = await User.findOne({ phone });
 
-        if (!user) return res.status(404).json({message: 'User not found.'});
-        if (!user.resetOtp || user.otpExpiry < Date.now())
-            return res.status(400).json({message: 'OTP expired.'});
+    if (!user) return res.status(404).json({ message: "User not found." });
+    if (!user.resetOtp || user.otpExpiry < Date.now())
+      return res.status(400).json({ message: "OTP expired." });
 
-        if (user.resetOtp !== Number(otp))
-            return res.status(400).json({message: 'Invalid OTP.'});
+    if (user.resetOtp !== Number(otp))
+      return res.status(400).json({ message: "Invalid OTP." });
 
-        res.json({message: 'OTP verified successfully.'})
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({message: 'Server Error.'})
-    }
+    res.json({ message: "OTP verified successfully." });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server Error." });
+  }
 });
 
-router.post ('/reset-password', async (req, res) => {
-    try {
-        const { phone, otp, newPassword, confirmPassword } = req.body;
-        if (newPassword !== confirmPassword  ){
-            return res.status(400).json({message: 'Password doesnt match.'})
-        }
-
-        const user = await User.findOne({phone});
-
-        if (!user) return res.status(400).json({message: 'User not found.'});
-        if (user.resetOtp !== Number(otp))
-            return res.status(400).json({message: 'Invalid OTP'});
-        if (user.otpExpiry < Date.now())
-            return res.status(400).json({message: 'OTP expired.'});
-
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password_hash = hashedPassword;
-
-        user.resetOtp = undefined;
-        user.otpExpiry = undefined;
-
-        await user.save();
-
-        res.json({message: 'Password reset successful.'})
-    } catch (error){
-        console.error('Error resetting password.');
-        res.status(500).json({message: 'Server Error'})
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { phone, otp, newPassword, confirmPassword } = req.body;
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Password doesnt match." });
     }
-});
 
+    const user = await User.findOne({ phone });
+
+    if (!user) return res.status(400).json({ message: "User not found." });
+    if (user.resetOtp !== Number(otp))
+      return res.status(400).json({ message: "Invalid OTP" });
+    if (user.otpExpiry < Date.now())
+      return res.status(400).json({ message: "OTP expired." });
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password_hash = hashedPassword;
+
+    user.resetOtp = undefined;
+    user.otpExpiry = undefined;
+
+    await user.save();
+
+    res.json({ message: "Password reset successful." });
+  } catch (error) {
+    console.error("Error resetting password.");
+    res.status(500).json({ message: "Server Error" });
+  }
+});
 
 module.exports = router;

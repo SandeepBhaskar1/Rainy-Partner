@@ -66,7 +66,7 @@ router.get(
   "/plumbers",
   verifyAdminToken,
   asyncHandler(async (req, res) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 999999 } = req.query;
 
     let filter = { role: "PLUMBER" };
     if (status) {
@@ -213,11 +213,9 @@ router.put(
         return res.status(200).json({ message: "Already assigned to this coordinator." });
       }
 
-      // Update plumber record
       plumber.coordinator_id = newCoordinatorId;
       await plumber.save();
 
-      // Remove plumber from old coordinator
       if (oldCoordinatorId) {
         const oldCoord = await User.findById(oldCoordinatorId);
         if (oldCoord && Array.isArray(oldCoord.assigned_plumbers)) {
@@ -230,7 +228,6 @@ router.put(
         }
       }
 
-      // Add plumber to new coordinator
       const newCoord = await User.findById(newCoordinatorId);
       if (newCoord) {
         if (!Array.isArray(newCoord.assigned_plumbers)) {
@@ -373,7 +370,7 @@ router.get(
   "/orders",
   verifyAdminToken,
   asyncHandler(async (req, res) => {
-    const { status, page = 1, limit = 50 } = req.query;
+    const { status, page = 1, limit = 999999 } = req.query;
 
     let filter = {};
     if (status) {
@@ -474,7 +471,7 @@ router.get(
   verifyAdminToken,
   asyncHandler(async (req, res) => {
     const db = mongoose.connection.db;
-    const { status, page = 1, limit = 50 } = req.query;
+    const { status, page = 1, limit = 999999 } = req.query;
 
     let filter = {};
     if (status) {

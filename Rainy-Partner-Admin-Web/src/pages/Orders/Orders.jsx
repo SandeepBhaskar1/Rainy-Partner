@@ -26,9 +26,14 @@ const Orders = () => {
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    type: "success",
+  });
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 10,
+    limit: 999999,
     total: 0,
     pages: 0,
   });
@@ -50,6 +55,13 @@ const Orders = () => {
   });
 
   const backendUrl = import.meta.env.VITE_APP_BACKEND_URL;
+
+  const showToast = (message, type = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: "" });
+    }, 3000);
+  };
 
   useEffect(() => {
     fetchData();
@@ -74,7 +86,7 @@ const Orders = () => {
           api.get(`/admin/orders`, {
             params,
           }),
-          api.get(`/admin/plumbers`),
+          api.get(`/admin/plumbers?limit=999999`),
           api.get(`/products`),
         ]);
 
@@ -98,7 +110,6 @@ const Orders = () => {
         const plumbersList = plumbersData.plumbers || plumbersData || [];
         setPlumbers(plumbersList);
         console.log(plumbersList);
-        
 
         plumbersList.forEach((plumber) => {
           const plumberId = plumber._id || plumber.id;
@@ -309,27 +320,18 @@ const Orders = () => {
     try {
       const orderId = order._id || order.id;
 
-      await api.put(
-        `/admin/orders/${orderId}/status`,
-        { status: newStatus }
-      );
+      await api.put(`/admin/orders/${orderId}/status`, { status: newStatus });
 
-      setOrders((prevOrders) =>
-        prevOrders.map((o) =>
-          o._id === order._id || o.id === order.id
-            ? { ...o, status: newStatus }
-            : o
-        )
-      );
+      await fetchData();
 
-      alert("Status updated successfully!");
+      showToast("Status updated successfully!");
     } catch (err) {
       console.error("Failed to update status:", err);
       const errorMsg =
         err.response?.data?.detail ||
         err.response?.data?.message ||
         "Failed to update status. Try again.";
-      alert(errorMsg);
+      showToast(errorMsg);
     }
   };
 
@@ -360,7 +362,7 @@ const Orders = () => {
 
   const handleCancelReasonSubmit = () => {
     if (!cancelReason.trim()) {
-      alert("Please provide a cancellation reason");
+      showToast("Please provide a cancellation reason");
       return;
     }
     setShowCancelModal(false);
@@ -376,13 +378,10 @@ const Orders = () => {
     }
 
     try {
-      await api.put(
-        `/admin/orders/${orderToCancel._id}/status`,
-        {
-          status: "Cancelled",
-          cancelled_reason: cancelReason.trim(),
-        },
-      );
+      await api.put(`/admin/orders/${orderToCancel._id}/status`, {
+        status: "Cancelled",
+        cancelled_reason: cancelReason.trim(),
+      });
 
       setOrders((prevOrders) =>
         prevOrders.map((o) =>
@@ -396,10 +395,10 @@ const Orders = () => {
         )
       );
 
-      alert("Order cancelled successfully");
+      showToast("Order cancelled successfully");
     } catch (err) {
       console.error("Failed to cancel order:", err);
-      alert(
+      showToast(
         err.response?.data?.message || "Failed to cancel order. Try again."
       );
     } finally {
@@ -436,85 +435,84 @@ const Orders = () => {
   const handleCreateOrder = async (e) => {
     e.preventDefault();
 
-    // Validate all required fields
     if (!newOrder.plumber_id) {
-      alert("Please select a plumber");
+      showToast("Please select a plumber");
       return;
     }
 
     if (!newOrder.client_name.trim()) {
-      alert("Please enter client name");
+      showToast("Please enter client name");
       return;
     }
 
     if (!newOrder.client_phone.trim()) {
-      alert("Please enter client phone number");
+      showToast("Please enter client phone number");
       return;
     }
 
     const phoneRegex = /^[0-9]{10}$/;
     if (!phoneRegex.test(newOrder.client_phone.replace(/\s/g, ""))) {
-      alert("Please enter a valid 10-digit phone number");
+      showToast("Please enter a valid 10-digit phone number");
       return;
     }
 
     if (!newOrder.billing_address.trim()) {
-      alert("Please enter billing address");
+      showToast("Please enter billing address");
       return;
     }
     if (!newOrder.billing_city.trim()) {
-      alert("Please enter billing city");
+      showToast("Please enter billing city");
       return;
     }
     if (!newOrder.billing_state.trim()) {
-      alert("Please enter billing state");
+      showToast("Please enter billing state");
       return;
     }
     if (!newOrder.billing_pin.trim()) {
-      alert("Please enter billing PIN code");
+      showToast("Please enter billing PIN code");
       return;
     }
 
     const pinRegex = /^[0-9]{6}$/;
     if (!pinRegex.test(newOrder.billing_pin)) {
-      alert("Please enter a valid 6-digit PIN code for billing address");
+      showToast("Please enter a valid 6-digit PIN code for billing address");
       return;
     }
 
     if (!newOrder.shipping_address.trim()) {
-      alert("Please enter shipping address");
+      showToast("Please enter shipping address");
       return;
     }
     if (!newOrder.shipping_city.trim()) {
-      alert("Please enter shipping city");
+      showToast("Please enter shipping city");
       return;
     }
     if (!newOrder.shipping_state.trim()) {
-      alert("Please enter shipping state");
+      showToast("Please enter shipping state");
       return;
     }
     if (!newOrder.shipping_pin.trim()) {
-      alert("Please enter shipping PIN code");
+      showToast("Please enter shipping PIN code");
       return;
     }
 
     if (!pinRegex.test(newOrder.shipping_pin)) {
-      alert("Please enter a valid 6-digit PIN code for shipping address");
+      showToast("Please enter a valid 6-digit PIN code for shipping address");
       return;
     }
 
     if (!Array.isArray(newOrder.products) || newOrder.products.length === 0) {
-      alert("Please add at least one product");
+      showToast("Please add at least one product");
       return;
     }
 
     for (const [i, item] of newOrder.products.entries()) {
       if (!item.model) {
-        alert(`Please select a model for product #${i + 1}`);
+        showToast(`Please select a model for product #${i + 1}`);
         return;
       }
       if (!item.quantity || item.quantity < 1) {
-        alert(`Please enter a valid quantity (≥1) for product #${i + 1}`);
+        showToast(`Please enter a valid quantity (≥1) for product #${i + 1}`);
         return;
       }
     }
@@ -565,7 +563,7 @@ const Orders = () => {
 
       await api.post(`/admin/admin-place-order`, orderData);
 
-      alert("Order created successfully!");
+      showToast("Order created successfully!");
       setShowCreateModal(false);
       setNewOrder({
         plumber_id: "",
@@ -591,7 +589,7 @@ const Orders = () => {
         error.response?.data?.detail ||
         error.response?.data?.message ||
         "Failed to create order. Please try again.";
-      alert(errorMessage);
+      showToast(errorMessage);
 
       const submitButton = e.target.querySelector('button[type="submit"]');
       if (submitButton) {
@@ -635,6 +633,17 @@ const Orders = () => {
 
   return (
     <div className="orders-page">
+      {toast.show && (
+        <div className={`toast toast-${toast.type}`}>
+          <div className="toast-icon">
+            {toast.type === "success" && <CircleCheckBig size={20} />}
+            {toast.type === "error" && <X size={20} />}
+            {toast.type === "warning" && <AlertCircle size={20} />}
+          </div>
+          <span className="toast-message">{toast.message}</span>
+        </div>
+      )}
+
       <div className="orders-container">
         <div className="orders-header">
           <h2>Orders</h2>
@@ -818,16 +827,11 @@ const Orders = () => {
                                 { status: newStatus }
                               );
 
-                              setOrders((prevOrders) =>
-                                prevOrders.map((o) =>
-                                  o._id === order._id
-                                    ? { ...o, status: newStatus }
-                                    : o
-                                )
-                              );
+                              await fetchData();
+                              showToast("Status updated successfully!");
                             } catch (err) {
                               console.error("Failed to update status:", err);
-                              alert("Failed to update status. Try again.");
+                              showToast("Failed to update status. Try again.");
                             }
                           }}
                         >
@@ -949,7 +953,7 @@ const Orders = () => {
                               onClick={async () => {
                                 const awbNumber = order.awb_number?.trim();
                                 if (!awbNumber) {
-                                  alert(
+                                  showToast(
                                     "Please enter an AWB number before saving."
                                   );
                                   return;
@@ -961,24 +965,18 @@ const Orders = () => {
                                     {
                                       awb_number: awbNumber,
                                       status: order.status,
-                                    },
+                                    }
                                   );
 
-                                  alert("AWB number saved successfully ✅");
+                                  showToast("AWB number saved successfully ✅");
 
-                                  setOrders((prevOrders) =>
-                                    prevOrders.map((o) =>
-                                      o._id === order._id
-                                        ? { ...o, awb_changed: false }
-                                        : o
-                                    )
-                                  );
+                                  await fetchData();
                                 } catch (err) {
                                   console.error(
                                     "Failed to update AWB number:",
                                     err
                                   );
-                                  alert(
+                                  showToast(
                                     "Failed to update AWB number. Try again."
                                   );
                                 }
@@ -1000,22 +998,17 @@ const Orders = () => {
                                 {
                                   status: newStatus,
                                   fulfilled_at: new Date().toISOString(),
-                                },
+                                }
                               );
 
-                              setOrders((prevOrders) =>
-                                prevOrders.map((o) =>
-                                  o._id === order._id
-                                    ? { ...o, status: newStatus }
-                                    : o
-                                )
-                              );
+                              await fetchData();
+                              showToast("Order marked as fulfilled!");
                             } catch (err) {
                               console.error(
                                 "Failed to mark order as fulfilled:",
                                 err
                               );
-                              alert(
+                              showToast(
                                 "Failed to mark order as fulfilled. Try again."
                               );
                             }
@@ -1187,7 +1180,6 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Create Order Modal */}
       {showCreateModal && (
         <div
           className="modal-overlay"
@@ -1507,7 +1499,6 @@ const Orders = () => {
                 </div>
               </div>
 
-              {/* Customer and Plumber Info Cards */}
               <div className="info-cards-row">
                 <div className="info-card customer-card">
                   <div className="icon-circle customer-icon">👤</div>
@@ -1535,7 +1526,6 @@ const Orders = () => {
                 </div>
               </div>
 
-              {/* Addresses Section */}
               <div className="addresses-row">
                 <div className="address-card billing-card">
                   <div className="address-header">📍 Billing Address</div>
@@ -1551,7 +1541,6 @@ const Orders = () => {
                 </div>
               </div>
 
-              {/* Order Items Section */}
               <div className="items-section">
                 <h4 className="section-title">Order Items</h4>
                 {selectedOrder.items?.map((item, index) => (
@@ -1573,7 +1562,6 @@ const Orders = () => {
                 ))}
               </div>
 
-              {/* Tracking Info - Only show for Dispatched or Fulfilled status */}
               {(selectedOrder.status === "Dispatched" ||
                 selectedOrder.status === "Fulfilled") &&
                 selectedOrder.awb_number && (
@@ -1585,7 +1573,6 @@ const Orders = () => {
                   </div>
                 )}
 
-              {/* Invoice Upload Section - Only show for Dispatched status */}
               {selectedOrder.status === "Dispatched" && (
                 <div className="invoice-upload-section">
                   <h4 className="section-title">Invoice</h4>
@@ -1606,7 +1593,7 @@ const Orders = () => {
                             window.open(response.data.url, "_blank");
                           } catch (err) {
                             console.error("Failed to download invoice:", err);
-                            alert("Failed to download invoice. Try again.");
+                            showToast("Failed to download invoice. Try again.");
                           }
                         }}
                       >
@@ -1625,12 +1612,12 @@ const Orders = () => {
                           if (!file) return;
 
                           if (file.type !== "application/pdf") {
-                            alert("Only PDF files are allowed");
+                            showToast("Only PDF files are allowed");
                             return;
                           }
 
                           if (file.size > 5 * 1024 * 1024) {
-                            alert("File size exceeds 5MB limit");
+                            showToast("File size exceeds 5MB limit");
                             return;
                           }
 
@@ -1642,10 +1629,10 @@ const Orders = () => {
 
                             const response = await api.post(
                               `/admin/order/upload-invoice/${selectedOrder._id}`,
-                              formData,
+                              formData
                             );
 
-                            alert("Invoice uploaded successfully ✅");
+                            showToast("Invoice uploaded successfully ✅");
 
                             setSelectedOrder({
                               ...selectedOrder,
@@ -1666,7 +1653,7 @@ const Orders = () => {
                             e.target.value = "";
                           } catch (err) {
                             console.error("Failed to upload invoice:", err);
-                            alert(
+                            showToast(
                               err.response?.data?.message ||
                                 "Failed to upload invoice. Try again."
                             );
@@ -1684,7 +1671,6 @@ const Orders = () => {
                 </div>
               )}
 
-              {/* Dates Section */}
               <div className="dates-row">
                 <div className="date-card order-date-card">
                   <span className="date-label">Order Date</span>
@@ -1706,7 +1692,6 @@ const Orders = () => {
                 )}
               </div>
 
-              {/* Total Section */}
               <div className="order-total-section">
                 <span className="total-label">Total Amount</span>
                 <span className="total-amount">

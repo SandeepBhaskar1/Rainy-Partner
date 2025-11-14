@@ -353,7 +353,6 @@ export default function PlaceOrderScreen() {
             )}
           </View>
 
-          {/* Customer Information */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Customer Information</Text>
 
@@ -398,7 +397,6 @@ export default function PlaceOrderScreen() {
             </View>
           </View>
 
-          {/* Shipping Address */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Shipping Address</Text>
 
@@ -470,7 +468,6 @@ export default function PlaceOrderScreen() {
             </View>
           </View>
 
-          {/* Billing Address */}
           <View style={styles.section}>
             <View style={styles.toggleRow}>
               <Text style={styles.sectionTitle}>Billing Address</Text>

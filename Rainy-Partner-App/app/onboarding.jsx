@@ -441,11 +441,9 @@ export default function Onboarding() {
         license_back: formData.license_back,
       };
 
-      const response = await axios.post(
-        `${BACKEND_URL}/onboarding`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await axios.post(`${BACKEND_URL}/onboarding`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       const result = response.data;
 
@@ -980,7 +978,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   logoutButton: {
-    width: '90%',
+    width: "90%",
     backgroundColor: "#FF3B30",
     alignSelf: "center",
     paddingVertical: 16,

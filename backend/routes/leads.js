@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead');
 const { verifyAdminToken } = require('../middleware/auth');
+const { sendCustomerSMS } = require('../utils/fast2sms');
 
-router.post('/', async (req, res) => {
+router.post('/', verifyAdminToken, async (req, res) => {
   try {
     const { client, model_purchased } = req.body;
 
@@ -29,6 +30,9 @@ router.post('/', async (req, res) => {
 
     await newLead.save();
 
+    sendCustomerSMS(client.phone).catch((err) => {
+      console.error("Error sending customer SMS:", err);
+    });
     res.status(201).json({ message: 'Lead created successfully', lead: newLead });
   } catch (error) {
     console.error('Error creating lead:', error);
@@ -36,7 +40,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
+router.get('/', verifyAdminToken, async (req, res) => {
     try {
         const leads = await Lead.find().
         sort({ created_at: -1 });   
@@ -49,7 +53,6 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Assign plumber to a lead
 router.put('/:leadId/assign', verifyAdminToken, async (req, res) => {
   try {
     const { leadId } = req.params;

@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { body, validationResult } = require('express-validator');
-const { verifyPlumberToken } = require('../middleware/auth');
+const { verifyPlumberToken, verifyAdminToken } = require('../middleware/auth');
 const { APIError, asyncHandler } = require('../middleware/errorHandler');
 const User = require('../models/User');
 const Order = require('../models/Order');
@@ -79,7 +79,7 @@ for (const field of allowedFields) {
 }));
 
 
-router.get('/stats', async (req, res) => {
+router.get('/stats', verifyAdminToken, async (req, res) => {
   try {
     const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
     const approved = plumbers.filter(p => p.kyc_status === 'approved').length;

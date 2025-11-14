@@ -109,7 +109,7 @@ const Orders = () => {
 
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 10,
+    limit: 999999,
     total: 0,
     pages: 0,
   });
@@ -218,7 +218,7 @@ const Orders = () => {
             params,
             signal: abortControllerRef.current.signal,
           }),
-          apiCall("get", "/coordinator/plumbers", null, {
+          apiCall("get", "/coordinator/plumbers?limit='999999", null, {
             signal: abortControllerRef.current.signal,
           }),
           apiCall("get", "/products", null, {

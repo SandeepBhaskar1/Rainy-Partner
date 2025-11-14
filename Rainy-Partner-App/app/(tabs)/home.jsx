@@ -123,7 +123,6 @@ export default function HomeScreen() {
           <RefreshControl refreshing={loading} onRefresh={fetchAll} />
         }
       >
-        {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <View>
