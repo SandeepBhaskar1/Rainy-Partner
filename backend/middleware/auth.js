@@ -4,31 +4,37 @@ const { default: mongoose } = require('mongoose');
 
 const verifyToken = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+    const token = req.header("Authorization")?.replace("Bearer ", "");
+
     if (!token) {
-      return res.status(401).json({ detail: 'Access token is missing' });
+      return res.status(401).json({ detail: "Access token is missing" });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    const user = await User.findOne({ _id: new mongoose.Types.ObjectId(decoded.user_id) });
-    
+
+    const user = await User.findById(decoded.user_id);
+
     if (!user || !user.is_active) {
-      return res.status(401).json({ detail: 'Invalid or expired token' });
+      return res.status(401).json({ detail: "Invalid or expired token" });
+    }
+
+    if (user.role !== "ADMIN" && user.role !== "COORDINATOR") {
+      return res.status(403).json({ detail: "Access denied. Admin or Coordinator only." });
     }
 
     req.user = user;
     next();
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ detail: 'Invalid token' });
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ detail: "Invalid token" });
     }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ detail: 'Token expired' });
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ detail: "Token expired" });
     }
-    return res.status(500).json({ detail: 'Token verification failed' });
+    return res.status(500).json({ detail: "Token verification failed" });
   }
 };
+
 
 const verifyPlumberToken = async (req, res, next) => {
   try {
