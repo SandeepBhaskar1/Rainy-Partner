@@ -79,7 +79,7 @@ for (const field of allowedFields) {
 }));
 
 
-router.get('/stats', verifyToken, async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const plumbers = await User.find({ role: 'PLUMBER' }).select('kyc_status');
     const approved = plumbers.filter(p => p.kyc_status === 'approved').length;
