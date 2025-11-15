@@ -30,6 +30,15 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(fileUpload(
+  { limits: { fileSize: 2 * 1024 * 1024 },
+    abortOnLimit: true,
+    useTempFiles: true,
+    tempFileDir: "/tmp/",
+    createParentPath: true,
+    debug: true,
+  }
+));
 
 app.use(
   helmet({
