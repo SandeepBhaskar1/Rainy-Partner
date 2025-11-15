@@ -14,6 +14,7 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const bcrypt = require("bcryptjs/dist/bcrypt");
 const Lead = require("../models/Lead");
 const { sendAssignedSMS, sendCustomerSMS } = require("../utils/fast2sms");
+const fileUpload = require("express-fileupload");
 
 const router = express.Router();
 
@@ -489,6 +490,14 @@ router.put(
 router.post(
   "/order/upload-invoice/:orderId",
   verifyCoordinateToken,
+  fileUpload({
+    limits: { fileSize: 2 * 1024 * 1024 },
+    abortOnLimit: true,
+    useTempFiles: true,
+    tempFileDir: "/tmp/",
+    createParentPath: true,
+    debug: true,
+  }),
   asyncHandler(async (req, res) => {
     const { docType, fileType } = req.body;
     const { orderId } = req.params;
@@ -554,11 +563,15 @@ router.post(
       const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET_INVOICES,
         Key: fileName,
-        Body: invoiceFile.data,
+        Body: fs.createReadStream(invoiceFile.tempFilePath),
         ContentType: "application/pdf",
       });
 
       await s3.send(command);
+
+      fs.unlink(invoiceFile.tempFilePath, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
 
       order.invoiceKey = fileName;
       await order.save();
@@ -573,6 +586,9 @@ router.post(
       });
     } catch (error) {
       console.error("Error uploading to S3:", error);
+      fs.unlink(invoiceFile.tempFilePath, (err) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
       res.status(500).json({ success: false, error: error.message });
     }
   })

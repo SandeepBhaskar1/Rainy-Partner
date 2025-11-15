@@ -84,7 +84,7 @@ const Installations = () => {
 
         try {
           const installationsRes = await api.get(
-            `/post-leads`,
+            `/coordinator/post-leads`,
           );
           setInstallations(installationsRes.data);
         } catch (error) {
@@ -270,19 +270,23 @@ const Installations = () => {
     });
   };
 
-  const getFilteredPlumbers = () => {
-    if (!selectedInstallation) return [];
+const getFilteredPlumbers = () => {
+  if (!selectedInstallation) return [];
 
-    const availablePlumbers = getAvailablePlumbers();
+  const availablePlumbers = getAvailablePlumbers();
 
-    const servicePins = availablePlumbers.filter((plumber) => {
-      const servicePinList = Array.isArray(plumber.service_area_pin)
-        ? plumber.service_area_pin.map((p) => p.trim())
-        : [];
-      return servicePinList.includes(selectedInstallation?.client?.pincode);
-    });
-    return servicePins;
-  };
+  const servicePins = availablePlumbers.filter((plumber) => {
+    const servicePinList = Array.isArray(plumber.service_area_pin)
+      ? plumber.service_area_pin.flatMap((p) =>
+          p.split(",").map((x) => x.trim())
+        )
+      : [];
+
+    return servicePinList.includes(selectedInstallation?.client?.pincode);
+  });
+
+  return servicePins;
+};
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -312,7 +316,7 @@ const Installations = () => {
         model_purchased: formData.model,
       };
 
-      const response = await api.post(`/post-leads`, payload);
+      const response = await api.post(`/coordinator/post-leads`, payload);
 
       if (response.status === 201) {
         showToast("Installation created successfully!", "success");
@@ -328,7 +332,7 @@ const Installations = () => {
           model: "",
         });
 
-        const installationsRes = await api.get(`${BACKEND_URL}/post-leads`);
+        const installationsRes = await api.get(`${BACKEND_URL}/coordinator/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
@@ -378,7 +382,7 @@ const Installations = () => {
         setSelectedInstallation(null);
         setSelectedPlumber("");
 
-        const installationsRes = await api.get(`/post-leads`);
+        const installationsRes = await api.get(`/coordinator/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
@@ -407,7 +411,7 @@ const Installations = () => {
       if (response.status === 200) {
         showToast("Installation approved successfully!", "success");
 
-        const installationsRes = await api.get(`/post-leads`);
+        const installationsRes = await api.get(`/coordinator/post-leads`);
         setInstallations(installationsRes.data);
       }
     } catch (error) {
@@ -443,7 +447,7 @@ const Installations = () => {
       setNewPlumberId("");
       setSelectedInstallation(null);
 
-      const installationsRes = await api.get(`/post-leads`);
+      const installationsRes = await api.get(`/coordinator/post-leads`);
       setInstallations(installationsRes.data);
     } catch (error) {
       console.error("Error reassigning plumber:", error);
@@ -467,7 +471,7 @@ const Installations = () => {
 
       showToast("Installation cancelled successfully!", "success");
 
-      const installationsRes = await api.get(`/post-leads`);
+      const installationsRes = await api.get(`/coordinator/post-leads`);
       setInstallations(installationsRes.data);
     } catch (error) {
       console.error("Error canceling installation:", error);

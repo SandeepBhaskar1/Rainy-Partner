@@ -69,7 +69,7 @@ const coordinatorPlumbers = () => {
         const [filterRes, plumbersRes, leadsRes] = await Promise.all([
           api.get(`/coordinator/plumbers/filters`),
           api.get(`/coordinator/plumbers?limit=999999`),
-          api.get(`/post-leads`),
+          api.get(`/coordinator/post-leads`),
         ]);
 
         const fetchedStates = filterRes.data.states || [];
