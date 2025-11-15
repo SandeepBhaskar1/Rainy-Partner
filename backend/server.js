@@ -33,8 +33,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload(
   { limits: { fileSize: 2 * 1024 * 1024 },
     abortOnLimit: true,
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
+    useTempFiles: false,
     createParentPath: true,
     debug: true,
   }

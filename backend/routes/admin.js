@@ -505,14 +505,6 @@ router.get(
 
 router.post(
   "/order/upload-invoice/:orderId",
-    fileUpload({
-    limits: { fileSize: 5 * 1024 * 1024 },
-    abortOnLimit: true,
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
-    createParentPath: true,
-    debug: true,
-  }),
   verifyAdminToken,
   asyncHandler(async (req, res) => {
     const { docType, fileType } = req.body;
@@ -579,15 +571,11 @@ router.post(
       const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET_INVOICES,
         Key: fileName,
-        Body: fs.createReadStream(invoiceFile.tempFilePath),
+        Body: invoiceFile.data,
         ContentType: "application/pdf",
       });
 
       await s3.send(command);
-
-      fs.unlink(invoiceFile.tempFilePath, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
 
       order.invoiceKey = fileName;
       await order.save();
@@ -602,9 +590,6 @@ router.post(
       });
     } catch (error) {
       console.error("Error uploading to S3:", error);
-      fs.unlink(invoiceFile.tempFilePath, (err) => {
-        if (err) console.error("Error deleting temp file:", err);
-      });
       res.status(500).json({ success: false, error: error.message });
     }
   })
