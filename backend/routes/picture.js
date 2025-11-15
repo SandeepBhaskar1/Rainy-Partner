@@ -1,4 +1,5 @@
 const express = require("express");
+const fileUpload = require("express-fileupload");
 const {
   S3Client,
   PutObjectCommand,
@@ -10,6 +11,14 @@ const { verifyToken, verifyAdminToken, verifyCoordinateToken } = require("../mid
 const router = express.Router();
 
 router.post("/uploadurl",
+  fileUpload({
+      limits: { fileSize: 5 * 1024 * 1024 },
+      abortOnLimit: true,
+      useTempFiles: true,
+      tempFileDir: "/tmp/",
+      createParentPath: true,
+      debug: true,
+    }),
   verifyToken, async (req, res) => {
   try {
     const { docType, fileType } = req.body;
