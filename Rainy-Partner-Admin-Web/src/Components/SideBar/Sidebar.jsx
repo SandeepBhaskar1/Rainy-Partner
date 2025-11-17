@@ -27,7 +27,7 @@ const Sidebar = () => {
 const handleLogout = async () => {
   try {
     await api.post(
-      `/admin-logout`,
+      `auth/admin-logout`,
       {},
     );
     

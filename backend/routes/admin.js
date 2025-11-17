@@ -14,6 +14,8 @@ const {
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const bcrypt = require("bcryptjs/dist/bcrypt");
 const counterSchema = require("../models/counterSchema");
+const fileUpload = require("express-fileupload");
+const { fstat } = require("fs");
 
 const router = express.Router();
 

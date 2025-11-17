@@ -9,11 +9,8 @@ const { verifyToken, verifyAdminToken, verifyCoordinateToken } = require("../mid
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
-  res.send("Working");
-});
-
-router.post("/uploadurl", verifyToken, async (req, res) => {
+router.post("/uploadurl",
+  verifyToken, async (req, res) => {
   try {
     const { docType, fileType } = req.body;
     const phone = req.user?.phone;
