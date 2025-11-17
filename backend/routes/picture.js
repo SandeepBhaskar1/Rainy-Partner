@@ -43,7 +43,7 @@ router.post("/uploadurl",
       const command = new PutObjectCommand({
         Bucket: process.env.S3_BUCKET_DOCUMENTS,
         Key: fileName,
-        ContentType: fileType,
+        ContentType: `image/${fileType}`,
       });
       const url = await getSignedUrl(s3, command, { expiresIn: 120 });
       return url;

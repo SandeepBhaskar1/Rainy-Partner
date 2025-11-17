@@ -9,7 +9,6 @@ import {
   XCircle,
   AlertCircle,
 } from "lucide-react";
-import axios from "axios";
 import "./Installations.css";
 import api from "../../api/axiosInstence";
 
@@ -359,9 +358,6 @@ const getFilteredPlumbers = () => {
       return;
     }
 
-    const plumber = plumbers.find(
-      (p) => p.id === plumberId || p._id === plumberId
-    );
     setAssignLoading(true);
 
     try {

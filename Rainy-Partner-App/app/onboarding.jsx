@@ -346,7 +346,7 @@ export default function Onboarding() {
       }
 
       const signedUrl = response.data.url;
-      const uploadedUrl = await uploadToS3(file.uri, signedUrl, file.type);
+      const uploadedUrl = await uploadToS3(file.uri, signedUrl, `image/${file.ext}`);
 
       if (uploadedUrl) {
         const s3Key = extractS3Key(uploadedUrl);
