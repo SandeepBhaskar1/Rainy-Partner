@@ -80,7 +80,6 @@ router.post(
         otp: TEST_OTP,
         expires: Date.now() + 30 * 60 * 1000,
       });
-      console.log(`📱 Test OTP for ${identifier}: ${TEST_OTP}`);
 
       return res.json({
         message: "OTP sent successfully",
@@ -95,20 +94,17 @@ router.post(
       expires: Date.now() + 5 * 60 * 1000,
     });
 
+    res.json({
+      message: "OTP sent successfully",
+      ...(process.env.NODE_ENV === "development" && { otp }),
+    });
+
     try {
       await sendOTPViaSMS(identifier, otp);
       console.log(`📱 OTP for ${identifier}: ${otp}`);
-
-      res.json({
-        message: "OTP sent successfully",
-        ...(process.env.NODE_ENV === "development" && { otp }),
-      });
     } catch (err) {
       otpStorage.delete(identifier);
       console.error("Error sending OTP:", err);
-      return res
-        .status(500)
-        .json({ detail: "Failed to send OTP", error: err.message });
     }
   })
 );

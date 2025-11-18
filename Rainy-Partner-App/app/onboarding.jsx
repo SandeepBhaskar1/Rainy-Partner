@@ -62,6 +62,14 @@ export default function Onboarding() {
     license_back: null,
   });
 
+  const capitalizeWords = (str) =>
+  str
+    .replace(/_/g, " ")
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useLanguage();
 
@@ -346,11 +354,19 @@ export default function Onboarding() {
       }
 
       const signedUrl = response.data.url;
-      const uploadedUrl = await uploadToS3(file.uri, signedUrl, `image/${file.ext}`);
+      const uploadedUrl = await uploadToS3(
+        file.uri,
+        signedUrl,
+        `image/${file.ext}`
+      );
 
       if (uploadedUrl) {
         const s3Key = extractS3Key(uploadedUrl);
         updateFormData(docType, s3Key);
+        Alert.alert(
+          "Success",
+          `${capitalizeWords(docType)} image uploaded successfully!`
+        );
       }
     } catch (error) {
       console.error("Error uploading file:", error);

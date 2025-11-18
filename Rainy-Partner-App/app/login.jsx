@@ -34,7 +34,6 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
-    // Validate phone number (10 digits)
     if (identifier.length !== 10 || !/^\d{10}$/.test(identifier)) {
       Alert.alert("Error", "Please enter a valid 10-digit phone number.");
       return;
@@ -44,12 +43,10 @@ export default function LoginScreen({ navigation }) {
     try {
       const response = await requestOtp(identifier);
       
-      console.log("OTP Response:", JSON.stringify(response, null, 2)); // Debug log
+      console.log("OTP Response:", JSON.stringify(response, null, 2));
       
-      // Check multiple possible success indicators
       const responseData = response?.data || response;
       
-      // Check if request was successful
       const isSuccess = 
         response?.status === 200 ||
         response?.status === 201 ||
